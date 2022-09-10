@@ -1,0 +1,21 @@
+################################################################################
+################################################################################
+	A Simple Starting Point for Shell Scripts
+
+	- Uses GIT for versioning.
+	- Basic parameter handling.
+	- Logging.
+	- Help.
+################################################################################
+################################################################################
+
+## GNUmakefile ##
+#################
+
+Automatically builds a .sh for each .sh.in.  Targets are 'all' (the
+default) and 'clean' to clean things up.
+
+## script.sh.in ##
+##################
+
+The example script -- does nothing...
