@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+######################################################################
+#
+# image.sh
+#
+# Image a disk, given an image (.wic).
+#
+######################################################################
+
+# Export everything
+set -a
+
+# Version
+VERSION=__VERSION__
+
+# Name
+SCRIPT_NAME=$(basename "${0}")
+
+# Script directory
+SCRIPT_DIR=`dirname $0`
+pushd ${SCRIPT_DIR} >/dev/null 2>&1
+SCRIPT_DIR=$(pwd)
+popd >/dev/null 2>&1
+
+#############
+# Functions #
+#############
+
+function getdv {
+    if [ -f /etc/os-release ]; then
+	# freedesktop.org and systemd
+	. /etc/os-release
+	DISTRO=$NAME
+	VER=$VERSION_ID
+    elif type lsb_release >/dev/null 2>&1; then
+	# linuxbase.org
+	DISTRO=$(lsb_release -si)
+	VER=$(lsb_release -sr)
+    else
+	# Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
+	DISTRO=$(uname -s)
+	VER=$(uname -r)
+    fi
+
+    echo "$DISTRO:$VER"
+}
+
+function script_info {
+    echo "--> ${SCRIPT_NAME} version is ${VERSION}"
+    echo "--> running on $(getdv)"
+}
+
+############
+# Defaults #
+############
+
+KEEP_TEMP="false"
+
+######################################################################
+# usage_
+#
+# Display usage and exit with the given code.
+
+function usage {
+
+    cat << EOF
+${SCRIPT_NAME} -d string [-h] -i string [-k] [-v] image disk
+  -d : Disk to write [/dev/<disk name>].
+  -h : Display this wonderful help screen.
+  -i : Wic image to write.
+  -k : Keep temporary output instead of deleting it.
+  -v : Display the version.
+EOF
+    exit $1
+
+}
+
+##################################
+# Parse the command line options #
+##################################
+
+while getopts "d:hi:kv" option ; do
+
+    case $option in
+
+        d)
+            DISK=$OPTARG
+            ;;
+
+        h)
+            usage 0
+            ;;
+
+        i)
+            IMAGE=$OPTARG
+            ;;
+
+	k)
+	    KEEP_TEMP="true"
+	    ;;
+
+	v)
+	    script_info
+	    exit 0
+	    ;;
+
+        *)
+            usage 1
+            ;;
+
+    esac
+
+done
+
+shift $(($OPTIND - 1))
+
+##########################################
+# Capture stdout and stdin in a log file #
+##########################################
+
+exec 3<&1
+exec 4<&2
+
+# Create a log file and redirect. 
+TEMP=$(mktemp -d /tmp/${SCRIPT_NAME}.XXXXXXXXXXXX)
+LOG=$TEMP/log
+PIPE=$TEMP/pipe
+
+if [ "$KEEP_TEMP" = "true" ]
+then
+    echo "--> Saving temporary files in ${TEMP}"
+else
+    trap "rm -rf $TEMP" EXIT
+fi
+
+mknod $PIPE p
+tee <$PIPE $LOG &
+exec 1>&-
+exec 1>$PIPE
+exec 2>&-
+exec 2>$PIPE
+
+#######################
+# Do something useful #
+#######################
+
+script_info
+
+IMAGE=$1
+DISK=$2
+
+# Make sure no partitions on $DISK are mounted, or being used as swap.
+
+echo "--> Verifying that $DISK is not in use..."
+
+DISK_USED="false"
+
+while read l
+do
+    if [[ $l ]]
+    then
+	P=$(echo $l | cut -d' ' -f 1)
+	MP=$(echo $l | cut -d' ' -f 3)
+	echo "$P is mounted as $MP"
+	DISK_USED="true"
+    fi
+done <<< $(mount | grep $DISK)
+
+while read l
+do
+    if [[ $l ]]
+    then
+	P=$(echo $l | cut -d' ' -f1)
+	echo "$P is used as swap"
+	DISK_USED="true"
+    fi
+done <<< $(swapon -s | egrep $DISK)
+
+if [ "$DISK_USED" = "true" ]
+then
+    echo "--> Unmount/Swapoff the above partitions and re-run the script!"
+    exit 1
+fi
+
+# Erase the disk.
+
+echo "--> Erasing $DISK..."
+
+dd if=/dev/zero of=$DISK bs=512 count=35 \
+   || (echo "dd failed!" ; exit 1)
+partprobe 2>/dev/null \
+    || (echo "partprobe failed!" ; exit 1)
+
+# Write the image.
+
+echo "--> Writing $IMAGE to $DISK..."
+
+dd bs=64k if=$IMAGE of=$DISK \
+   || (echo "dd failed!" ; exit 1)
+partprobe 2>/dev/null \
+    || (echo "partprobe failed!" ; exit 1)
+
+# Check/Fix the GPT partition table.
+
+echo "--> Checking/Fixing the GPT partition table."
+
+echo "v
+q" | gdisk "$DISK" 2>/dev/null |grep -e 'GPT: damaged' -e 'Problem:'
+
+if [ $? -eq 0 ]
+then
+echo "v
+x
+e
+r
+d
+w
+y" | gdisk "$DISK"
+fi
+
+#############################
+# Restore stdout and stderr #
+#############################
+
+rm -f $PIPE
+exec 1<&3 3<&-
+exec 2<&4 4<&-
+
+##############
+# That's all #
+##############
+
+exit 0
