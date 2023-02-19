@@ -146,14 +146,31 @@ exec 2>$PIPE
 
 script_info
 
-IMAGE=$1
-DISK=$2
+# Make sure the user is root.
+
+if [ "0" != "$(id -u)" ]
+then
+    echo "Must be run as root!"
+    exit 1
+fi
+
+# Make sure $DISK and $IMAGE exist.
+
+if [ -z "$DISK" ] || [ ! -w "$DISK" ]
+then
+    echo "Disk must be set, exist, and be writeable."
+    exit 1
+fi
+
+if [ -z "$DISK" ] || [ ! -r "${IMAGE}" ]
+then
+    echo "Image must be set, exist and be readable!"
+    exit 1
+fi
 
 # Make sure no partitions on $DISK are mounted, or being used as swap.
 
-echo "--> Verifying that $DISK is not in use..."
-
-DISK_USED="false"
+echo "--> If $DISK is in use, unmount or swapoff..."
 
 while read l
 do
@@ -161,8 +178,14 @@ do
     then
 	P=$(echo $l | cut -d' ' -f 1)
 	MP=$(echo $l | cut -d' ' -f 3)
-	echo "$P is mounted as $MP"
-	DISK_USED="true"
+	echo "$P is mounted as $MP, unmounting."
+	umount $MP
+
+	if [ $? -ne 0 ]
+	then
+	    echo "umount $MP failed!"
+	    exit 1
+	fi
     fi
 done <<< $(mount | grep $DISK)
 
@@ -171,16 +194,10 @@ do
     if [[ $l ]]
     then
 	P=$(echo $l | cut -d' ' -f1)
-	echo "$P is used as swap"
-	DISK_USED="true"
+	echo "$P is used as swap, turning it off."
+	swapoff $P
     fi
 done <<< $(swapon -s | egrep $DISK)
-
-if [ "$DISK_USED" = "true" ]
-then
-    echo "--> Unmount/Swapoff the above partitions and re-run the script!"
-    exit 1
-fi
 
 # Erase the disk.
 
