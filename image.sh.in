@@ -50,10 +50,44 @@ function script_info {
     echo "--> running on $(getdv)"
 }
 
+function unuse_disk {
+    DISK=$1
+
+    while read l
+    do
+	if [[ $l ]]
+	then
+	    P=$(echo $l | cut -d' ' -f 1)
+	    MP=$(echo $l | cut -d' ' -f 3)
+	    echo "$P is mounted as $MP, unmounting."
+	    umount $MP
+
+	    if [ $? -ne 0 ]
+	    then
+		echo "umount $MP failed!"
+		exit 1
+	    fi
+	fi
+    done <<< $(mount | grep $DISK)
+
+    while read l
+    do
+	if [[ $l ]]
+	then
+	    P=$(echo $l | cut -d' ' -f1)
+	    echo "$P is used as swap, turning it off."
+	    swapoff $P
+	fi
+    done <<< $(swapon -s | egrep $DISK)
+}
+
 ############
 # Defaults #
 ############
 
+DISK=""
+GUDV=""
+IMAGE=""
 KEEP_TEMP="false"
 
 ######################################################################
@@ -64,8 +98,11 @@ KEEP_TEMP="false"
 function usage {
 
     cat << EOF
-${SCRIPT_NAME} -d string [-h] -i string [-k] [-v] image disk
+${SCRIPT_NAME} -d string [-h] [-k] [-v] THEN '-i string' OR '-g number'
   -d : Disk to write [/dev/<disk name>].
+  -g : Create a Grand Unified Disk.
+       0: grr_a0_po and grr_k_904ec786_230218
+       1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
   -h : Display this wonderful help screen.
   -i : Wic image to write.
   -k : Keep temporary output instead of deleting it.
@@ -79,12 +116,16 @@ EOF
 # Parse the command line options #
 ##################################
 
-while getopts "d:hi:kv" option ; do
+while getopts "d:g:hi:kv" option ; do
 
     case $option in
 
         d)
             DISK=$OPTARG
+            ;;
+
+        g)
+            GUDV=$OPTARG
             ;;
 
         h)
@@ -154,7 +195,7 @@ then
     exit 1
 fi
 
-# Make sure $DISK and $IMAGE exist.
+# Make sure a disk was specified, and that it exists.
 
 if [ -z "$DISK" ] || [ ! -w "$DISK" ]
 then
@@ -162,77 +203,141 @@ then
     exit 1
 fi
 
-if [ -z "$DISK" ] || [ ! -r "${IMAGE}" ]
-then
-    echo "Image must be set, exist and be readable!"
-    exit 1
-fi
-
 # Make sure no partitions on $DISK are mounted, or being used as swap.
 
 echo "--> If $DISK is in use, unmount or swapoff..."
+unuse_disk $DISK
 
-while read l
-do
-    if [[ $l ]]
-    then
-	P=$(echo $l | cut -d' ' -f 1)
-	MP=$(echo $l | cut -d' ' -f 3)
-	echo "$P is mounted as $MP, unmounting."
-	umount $MP
+# Decide if this is a Grand Unified Disk, or a normal image.
 
-	if [ $? -ne 0 ]
-	then
-	    echo "umount $MP failed!"
-	    exit 1
-	fi
-    fi
-done <<< $(mount | grep $DISK)
-
-while read l
-do
-    if [[ $l ]]
-    then
-	P=$(echo $l | cut -d' ' -f1)
-	echo "$P is used as swap, turning it off."
-	swapoff $P
-    fi
-done <<< $(swapon -s | egrep $DISK)
-
-# Erase the disk.
-
-echo "--> Erasing $DISK..."
-
-dd if=/dev/zero of=$DISK bs=512 count=35 \
-   || (echo "dd failed!" ; exit 1)
-partprobe 2>/dev/null \
-    || (echo "partprobe failed!" ; exit 1)
-
-# Write the image.
-
-echo "--> Writing $IMAGE to $DISK..."
-
-dd bs=64k if=$IMAGE of=$DISK \
-   || (echo "dd failed!" ; exit 1)
-partprobe 2>/dev/null \
-    || (echo "partprobe failed!" ; exit 1)
-
-# Check/Fix the GPT partition table.
-
-echo "--> Checking/Fixing the GPT partition table."
-
-echo "v
-q" | gdisk "$DISK" 2>/dev/null |grep -e 'GPT: damaged' -e 'Problem:'
-
-if [ $? -eq 0 ]
+if [ "$GUDV" != "" ]
 then
-echo "v
-x
-e
-r
-d
-w
-y" | gdisk "$DISK"
+
+    ####################
+    # Grand Unified Disk
+    ####################
+
+    # Image locations are hard-coded, and this will only work on
+    # gmwl-dcg-0008 in GDC!
+
+    GUD_CUS=""
+    GUD_INT=""
+
+    case $GUDV in
+
+	0)
+	    echo "Using grr_a0_po and grr_k_904ec786_230218"
+	    GUD_CUS="grr_a0_po"
+	    GUD_INT="grr_k_904ec786_230218"
+	    ;;
+
+	1)
+	    echo "Using grr_a0_po_fcs and grr_k_22d3bbb4_230224"
+	    GUD_CUS="grr_a0_po_fcs"
+	    GUD_INT="grr_k_22d3bbb4_230224"
+	    ;;
+
+	*)
+	    echo "Valid versions of GUD are 0 and 1"
+	    exit 1
+	    ;;
+    esac
+
+    # Set up the disk.
+
+    parted -a optimal -s $DISK -- mklabel gpt
+    parted -a optimal -s $DISK -- mkpart primary fat16 0% 1G
+    parted -a optimal -s $DISK -- name 1 msdos
+    parted -a optimal -s $DISK -- set 1 legacy_boot on
+    parted -a optimal -s $DISK -- mkpart primary ext4 1G 9G
+    parted -a optimal -s $DISK -- name 2 oldroot
+    parted -a optimal -s $DISK -- mkpart primary ext4 9G 17G
+    parted -a optimal -s $DISK -- name 3 newroot
+    parted -a optimal -s $DISK -- mkpart primary linux-swap 17G 18G
+    parted -a optimal -s $DISK -- name 4 swap
+    parted -a optimal -s $DISK -- mkpart primary ext4 18G 100%
+    parted -a optimal -s $DISK -- name 5 extra
+    mkfs.fat -F 16 ${DISK}1
+    mkfs.ext4 ${DISK}2
+    mkfs.ext4 ${DISK}3
+    mkswap ${DISK}4
+    mkfs.ext4 ${DISK}5
+
+    # Make sure the system doesn't get carried away and start mounting things.
+
+    unuse_disk $DISK
+
+    # Make a temporary mount point.
+
+    MP=$(mktemp -d /tmp/image.sh.XXXXXXXXXX)
+
+    # Update the msdos/efi partition.
+
+    mount ${DISK}1 $MP
+    cp -r /home/yocto_releases/GUD/$GUDV/boot/* $MP
+    umount $MP
+
+    # Update the old root (hardknott based).
+
+    mount ${DISK}2 $MP
+    cd $MP
+    tar xf /home/yocto_releases/$GUD_CUS/images/axxia-image-dev-intel-axxia-grr.tar.gz
+    rm -rf lib/modules/*
+    cp -r /home/yocto_releases/GUD/$GUDV/root/lib/modules/* lib/modules
+    cd -
+    umount $MP 
+
+    # Update the new root (kirkstone based).
+
+    mount ${DISK}3 $MP
+    cd $MP
+    tar xf /home/yocto_releases/$GUD_INT/ink/images/axxia-image-dev-intel-axxia-grr.tar.gz
+    rm -rf lib/modules/*
+    cp -r /home/yocto_releases/GUD/$GUDV/root/lib/modules/* lib/modules
+    cd -
+    umount $MP 
+
+    # Update extras.
+
+    mount ${DISK}5 $MP
+    cp -r /home/yocto_releases/GUD/extra/* $MP
+    umount $MP
+
+else
+
+    ##############
+    # Normal Image
+    ##############
+
+    # Make sure $IMAGE exist.
+
+    if [ -z "${IMAGE}" ] || [ ! -r "${IMAGE}" ]
+    then
+	echo "Image must be set, exist and be readable!"
+	exit 1
+    fi
+
+    # Erase the disk.
+
+    echo "--> Erasing $DISK..."
+
+    dd if=/dev/zero of=$DISK bs=512 count=35 \
+	|| (echo "dd failed!" ; exit 1)
+    partprobe 2>/dev/null \
+	|| (echo "partprobe failed!" ; exit 1)
+
+    # Write the image.
+
+    echo "--> Writing $IMAGE to $DISK..."
+
+    dd bs=64k if=$IMAGE of=$DISK \
+	|| (echo "dd failed!" ; exit 1)
+    partprobe 2>/dev/null \
+	|| (echo "partprobe failed!" ; exit 1)
+
+    # Check/Fix the GPT partition table.
+    sgdisk -e $DISK
+
 fi
 
 #############################
