@@ -103,6 +103,8 @@ ${SCRIPT_NAME} -d string [-h] [-k] [-v] THEN '-i string' OR '-g number'
   -g : Create a Grand Unified Disk.
        0: grr_a0_po and grr_k_904ec786_230218
        1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
+       2: same as 1, but with the SVOS kernel and eeupdate tools
+       3: same as 2, but with grr_a0_po_fcs and grr_k_f5612eb5_230227
   -h : Display this wonderful help screen.
   -i : Wic image to write.
   -k : Keep temporary output instead of deleting it.
@@ -237,6 +239,18 @@ then
 	    GUD_INT="grr_k_22d3bbb4_230224"
 	    ;;
 
+	2)
+	    echo "Using grr_a0_po_fcs and grr_k_22d3bbb4_230224"
+	    GUD_CUS="grr_a0_po_fcs"
+	    GUD_INT="grr_k_22d3bbb4_230224"
+	    ;;
+
+	3)
+	    echo "Using grr_a0_po_fcs and grr_k_f5612eb5_230227"
+	    GUD_CUS="grr_a0_po_fcs"
+	    GUD_INT="grr_k_f5612eb5_230227"
+	    ;;
+
 	*)
 	    echo "Valid versions of GUD are 0 and 1"
 	    exit 1
@@ -258,14 +272,25 @@ then
     parted -a optimal -s $DISK -- mkpart primary ext4 18G 100%
     parted -a optimal -s $DISK -- name 5 extra
     mkfs.fat -F 16 ${DISK}1
-    mkfs.ext4 ${DISK}2
-    mkfs.ext4 ${DISK}3
-    mkswap ${DISK}4
-    mkfs.ext4 ${DISK}5
+    mkfs.ext4 -F ${DISK}2
+    mkfs.ext4 -F ${DISK}3
+    mkswap -f ${DISK}4
+    mkfs.ext4 -F ${DISK}5
 
     # Make sure the system doesn't get carried away and start mounting things.
 
     unuse_disk $DISK
+
+    # Update the kernel.
+
+    partprobe
+
+    # Get the PARTUUID for the 2nd and 3rd partitions.
+
+    PU2=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)2" \
+	      | awk '{ print $9 }')
+    PU3=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)3" \
+	      | awk '{ print $9 }')
 
     # Make a temporary mount point.
 
@@ -275,6 +300,8 @@ then
 
     mount ${DISK}1 $MP
     cp -r /home/yocto_releases/GUD/$GUDV/boot/* $MP
+    sed -i -e "s#OLD_ROOT#PARTUUID=$PU2#" -e "s#NEW_ROOT#PARTUUID=$PU3#" \
+	$MP/EFI/BOOT/grub.cfg
     umount $MP
 
     # Update the old root (hardknott based).
