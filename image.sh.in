@@ -86,6 +86,7 @@ function unuse_disk {
 ############
 
 DISK=""
+GUDL=""
 GUDV=""
 IMAGE=""
 KEEP_TEMP="false"
@@ -99,8 +100,13 @@ function usage {
 
     cat << EOF
 ${SCRIPT_NAME} -d string [-h] [-k] [-v] THEN '-i string' OR '-g number'
+  -a : Create a Grand Unified Disk in Austin.
+       0: grr_a0_po and grr_k_904ec786_230218
+       1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
+       2: same as 1, but with the SVOS kernel and eeupdate tools
+       3: same as 2, but with grr_a0_po_fcs and grr_k_f5612eb5_230227
   -d : Disk to write [/dev/<disk name>].
-  -g : Create a Grand Unified Disk.
+  -g : Create a Grand Unified Disk in GDC.
        0: grr_a0_po and grr_k_904ec786_230218
        1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
        2: same as 1, but with the SVOS kernel and eeupdate tools
@@ -118,15 +124,21 @@ EOF
 # Parse the command line options #
 ##################################
 
-while getopts "d:g:hi:kv" option ; do
+while getopts "a:d:g:hi:kv" option ; do
 
     case $option in
+
+        a)
+            GUDL="austin"
+            GUDV=$OPTARG
+            ;;
 
         d)
             DISK=$OPTARG
             ;;
 
         g)
+            GUDL="gdc"
             GUDV=$OPTARG
             ;;
 
@@ -210,6 +222,16 @@ fi
 echo "--> If $DISK is in use, unmount or swapoff..."
 unuse_disk $DISK
 
+# Check for NVMe...
+
+PV=""
+echo $DISK | grep -i nvme >/dev/null 2>&1
+
+if [ $? -eq 0 ]
+then
+    PV="p"
+fi
+
 # Decide if this is a Grand Unified Disk, or a normal image.
 
 if [ "$GUDV" != "" ]
@@ -224,6 +246,10 @@ then
 
     GUD_CUS=""
     GUD_INT=""
+    GUD_BOOT=""
+    GUD_OROOT=""
+    GUD_NROOT=""
+    GUD_EXTRA=""
 
     case $GUDV in
 
@@ -257,9 +283,38 @@ then
 	    ;;
     esac
 
+    case $GUDL in
+	"austin")
+	    GUD_BOOT="/tools/AGRreleases/yocto/grr/GUD/$GUDV/boot"
+	    GUD_OROOT="/tools/AGRreleases/yocto/hardknott/$GUD_CUS/axxia-grr-5.10/images/grr_a0_po_fcs_austinified.tgz"
+	    GUD_NROOT="/tools/AGRreleases/yocto/grr/$GUD_INT/ink/images/grr_k_f5612eb5_230227_austinified.tgz"
+	    GUD_EXTRA="/tools/AGRreleases/yocto/grr/GUD/extra"
+	    GUD="/tools/AGRreleases/yocto/grr/GUD"
+	    ;;
+	"gdc")
+	    GUD_BOOT="/home/yocto_releases/GUD/$GUDV/boot"
+	    GUD_OROOT="/home/yocto_releases/$GUD_CUS/images/axxia-image-dev-intel-axxia-grr.tar.gz"
+	    GUD_NROOT="/home/yocto_releases/$GUD_INT/ink/images/axxia-image-dev-intel-axxia-grr.tar.gz"
+	    GUD_EXTRA="/home/yocto_releases/GUD/extra"
+	    GUD="/home/yocto_releases/GUD"
+	    ;;
+	*)
+	    echo "Valid locations are GDC and Austin!"
+	    exit 1
+	    ;;
+    esac
+
     # Set up the disk.
 
     parted -a optimal -s $DISK -- mklabel gpt
+
+    if [ $? -ne 0 ]
+    then
+	echo "--> Unable to erase disk... rebooting.  Try again!"
+	reboot
+	exit 1
+    fi
+
     parted -a optimal -s $DISK -- mkpart primary fat16 0% 1G
     parted -a optimal -s $DISK -- name 1 msdos
     parted -a optimal -s $DISK -- set 1 legacy_boot on
@@ -271,11 +326,16 @@ then
     parted -a optimal -s $DISK -- name 4 swap
     parted -a optimal -s $DISK -- mkpart primary ext4 18G 100%
     parted -a optimal -s $DISK -- name 5 extra
-    mkfs.fat -F 16 ${DISK}1
-    mkfs.ext4 -F ${DISK}2
-    mkfs.ext4 -F ${DISK}3
-    mkswap -f ${DISK}4
-    mkfs.ext4 -F ${DISK}5
+    unuse_disk $DISK
+    mkfs.fat -F 16 ${DISK}${PV}1
+    unuse_disk $DISK
+    mkfs.ext4 -F ${DISK}${PV}2
+    unuse_disk $DISK
+    mkfs.ext4 -F ${DISK}${PV}3
+    unuse_disk $DISK
+    mkswap -f ${DISK}${PV}4
+    unuse_disk $DISK
+    mkfs.ext4 -F ${DISK}${PV}5
 
     # Make sure the system doesn't get carried away and start mounting things.
 
@@ -287,9 +347,9 @@ then
 
     # Get the PARTUUID for the 2nd and 3rd partitions.
 
-    PU2=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)2" \
+    PU2=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)${PV}2" \
 	      | awk '{ print $9 }')
-    PU3=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)3" \
+    PU3=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)${PV}3" \
 	      | awk '{ print $9 }')
 
     # Make a temporary mount point.
@@ -298,37 +358,39 @@ then
 
     # Update the msdos/efi partition.
 
-    mount ${DISK}1 $MP
-    cp -r /home/yocto_releases/GUD/$GUDV/boot/* $MP
+    mount ${DISK}${PV}1 $MP
+    cp -r $GUD_BOOT/* $MP
     sed -i -e "s#OLD_ROOT#PARTUUID=$PU2#" -e "s#NEW_ROOT#PARTUUID=$PU3#" \
 	$MP/EFI/BOOT/grub.cfg
     umount $MP
 
     # Update the old root (hardknott based).
 
-    mount ${DISK}2 $MP
+    mount ${DISK}${PV}2 $MP
     cd $MP
-    tar xf /home/yocto_releases/$GUD_CUS/images/axxia-image-dev-intel-axxia-grr.tar.gz
+    tar xf $GUD_OROOT
     rm -rf lib/modules/*
-    cp -r /home/yocto_releases/GUD/$GUDV/root/lib/modules/* lib/modules
+    cp -r $GUD/$GUDV/root/lib/modules/* lib/modules
     cd -
     umount $MP 
 
     # Update the new root (kirkstone based).
 
-    mount ${DISK}3 $MP
+    mount ${DISK}${PV}3 $MP
     cd $MP
-    tar xf /home/yocto_releases/$GUD_INT/ink/images/axxia-image-dev-intel-axxia-grr.tar.gz
+    tar xf $GUD_NROOT
     rm -rf lib/modules/*
-    cp -r /home/yocto_releases/GUD/$GUDV/root/lib/modules/* lib/modules
+    cp -r $GUD/$GUDV/root/lib/modules/* lib/modules
     cd -
     umount $MP 
 
     # Update extras.
 
-    mount ${DISK}5 $MP
-    cp -r /home/yocto_releases/GUD/extra/* $MP
+    mount ${DISK}${PV}5 $MP
+    cp -r $GUD_EXTRA/* $MP
     umount $MP
+
+    unuse_disk $DISK
 
 else
 
@@ -350,8 +412,14 @@ else
 
     dd if=/dev/zero of=$DISK bs=512 count=35 \
 	|| (echo "dd failed!" ; exit 1)
-    partprobe 2>/dev/null \
-	|| (echo "partprobe failed!" ; exit 1)
+    partprobe
+
+    if [ $? -ne 0 ]
+    then
+	echo "--> Unable to erase disk... rebooting.  Try again!"
+	reboot
+	exit 1
+    fi
 
     # Write the image.
 
@@ -364,6 +432,8 @@ else
 
     # Check/Fix the GPT partition table.
     sgdisk -e $DISK
+
+    unuse_disk $DISK
 
 fi
 
