@@ -86,7 +86,7 @@ function unuse_disk {
 ############
 
 DISK=""
-GUDL=""
+LOC=""
 GUDV=""
 IMAGE=""
 KEEP_TEMP="false"
@@ -99,14 +99,9 @@ KEEP_TEMP="false"
 function usage {
 
     cat << EOF
-${SCRIPT_NAME} -d string [-h] [-k] [-v] THEN '-i string' OR '-g number'
-  -a : Create a Grand Unified Disk in Austin.
-       0: grr_a0_po and grr_k_904ec786_230218
-       1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
-       2: same as 1, but with the SVOS kernel and eeupdate tools
-       3: same as 2, but with grr_a0_po_fcs and grr_k_f5612eb5_230227
+${SCRIPT_NAME} -d string [-h] [-k] [-l string] [-v] THEN '-i string' OR '-g number'
   -d : Disk to write [/dev/<disk name>].
-  -g : Create a Grand Unified Disk in GDC.
+  -g : Create a Grand Unified Disk, -l is required [guadalajara or austin]!
        0: grr_a0_po and grr_k_904ec786_230218
        1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
        2: same as 1, but with the SVOS kernel and eeupdate tools
@@ -114,6 +109,7 @@ ${SCRIPT_NAME} -d string [-h] [-k] [-v] THEN '-i string' OR '-g number'
   -h : Display this wonderful help screen.
   -i : Wic image to write.
   -k : Keep temporary output instead of deleting it.
+  -l : Location. [guadalajara or austin, optional for -i, required for -g]
   -v : Display the version.
 EOF
     exit $1
@@ -124,21 +120,15 @@ EOF
 # Parse the command line options #
 ##################################
 
-while getopts "a:d:g:hi:kv" option ; do
+while getopts "d:g:hi:kl:v" option ; do
 
     case $option in
-
-        a)
-            GUDL="austin"
-            GUDV=$OPTARG
-            ;;
 
         d)
             DISK=$OPTARG
             ;;
 
         g)
-            GUDL="gdc"
             GUDV=$OPTARG
             ;;
 
@@ -153,6 +143,10 @@ while getopts "a:d:g:hi:kv" option ; do
 	k)
 	    KEEP_TEMP="true"
 	    ;;
+
+        l)
+            LOC=$OPTARG
+            ;;
 
 	v)
 	    script_info
@@ -232,6 +226,19 @@ then
     PV="p"
 fi
 
+# Erase the disk.
+
+dd if=/dev/zero of=$DISK bs=512 count=35 \
+    || (echo "dd failed!" ; exit 1)
+partprobe
+
+if [ $? -ne 0 ]
+then
+    echo "--> Unable to erase disk... rebooting.  Try again!"
+    reboot
+    exit 1
+fi
+
 # Decide if this is a Grand Unified Disk, or a normal image.
 
 if [ "$GUDV" != "" ]
@@ -283,7 +290,7 @@ then
 	    ;;
     esac
 
-    case $GUDL in
+    case $LOC in
 	"austin")
 	    GUD_BOOT="/tools/AGRreleases/yocto/grr/GUD/$GUDV/boot"
 	    GUD_OROOT="/tools/AGRreleases/yocto/hardknott/$GUD_CUS/axxia-grr-5.10/images/grr_a0_po_fcs_austinified.tgz"
@@ -307,14 +314,6 @@ then
     # Set up the disk.
 
     parted -a optimal -s $DISK -- mklabel gpt
-
-    if [ $? -ne 0 ]
-    then
-	echo "--> Unable to erase disk... rebooting.  Try again!"
-	reboot
-	exit 1
-    fi
-
     parted -a optimal -s $DISK -- mkpart primary fat16 0% 1G
     parted -a optimal -s $DISK -- name 1 msdos
     parted -a optimal -s $DISK -- set 1 legacy_boot on
@@ -347,10 +346,8 @@ then
 
     # Get the PARTUUID for the 2nd and 3rd partitions.
 
-    PU2=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)${PV}2" \
-	      | awk '{ print $9 }')
-    PU3=$(ls -l /dev/disk/by-partuuid | grep "$(basename $DISK)${PV}3" \
-	      | awk '{ print $9 }')
+    PU2=$(blkid ${DISK}${PV}2 | awk '{ print $NF }' | cut -d'"' -f2)
+    PU3=$(blkid ${DISK}${PV}3 | awk '{ print $NF }' | cut -d'"' -f2)
 
     # Make a temporary mount point.
 
@@ -406,35 +403,60 @@ else
 	exit 1
     fi
 
-    # Erase the disk.
+    # Set up the disk.
 
-    echo "--> Erasing $DISK..."
-
-    dd if=/dev/zero of=$DISK bs=512 count=35 \
-	|| (echo "dd failed!" ; exit 1)
-    partprobe
-
-    if [ $? -ne 0 ]
-    then
-	echo "--> Unable to erase disk... rebooting.  Try again!"
-	reboot
-	exit 1
-    fi
-
-    # Write the image.
-
-    echo "--> Writing $IMAGE to $DISK..."
-
-    dd bs=64k if=$IMAGE of=$DISK \
-	|| (echo "dd failed!" ; exit 1)
-    partprobe 2>/dev/null \
-	|| (echo "partprobe failed!" ; exit 1)
-
-    # Check/Fix the GPT partition table.
-    sgdisk -e $DISK
-
+    parted -a optimal -s $DISK -- mklabel gpt
+    parted -a optimal -s $DISK -- mkpart primary fat16 0% 1G
+    parted -a optimal -s $DISK -- name 1 msdos
+    parted -a optimal -s $DISK -- set 1 legacy_boot on
+    parted -a optimal -s $DISK -- mkpart primary linux-swap 1G 2G
+    parted -a optimal -s $DISK -- name 2 swap
+    parted -a optimal -s $DISK -- mkpart primary ext4 2G 100%
+    parted -a optimal -s $DISK -- name 3 root
+    unuse_disk $DISK
+    mkfs.fat -F 16 ${DISK}${PV}1
+    unuse_disk $DISK
+    mkswap -f ${DISK}${PV}2
+    unuse_disk $DISK
+    mkfs.ext4 -F ${DISK}${PV}3
     unuse_disk $DISK
 
+    MP=$(mktemp -d /tmp/image.sh.XXXXXXXXXX)
+    ML=$(mktemp -d /tmp/image.sh.XXXXXXXXXX)
+    PU=$(blkid ${DISK}{PV}3 | awk '{ print $NF }' | cut -d'"' -f2)
+    SS=$(gdisk -l "${IMAGE}" | grep 'Sector size' | awk -e '{ print $4 }')
+    BSS=$(gdisk -l "${IMAGE}" | grep msdos | awk -e '{ print $2 }')
+    RSS=$(gdisk -l "${IMAGE}" | grep platform | awk -e '{ print $2 }')
+
+    # Copy /boot.
+    mount ${DISK}${PV}1 $MP
+    mount -o loop,offset=$(($SS*$BSS)) $IMAGE $ML
+    cp -r $ML/* $MP
+
+    # Update grub.cfg.
+    OPUID=$(cat $MP/EFI/BOOT/grub.cfg | grep PARTUUID | awk '{ print $3 }' | cut -d '=' -f 3)
+    sed -i "s/$OPUID/$PU/" $MP/EFI/BOOT/grub.cfg
+
+    # Done with boot.
+    umount $ML
+    umount $MP
+
+    # Copy /root.
+    mount ${DISK}${PV}3 $MP
+    mount -o loop,offset=$(($SS*$RSS)) $IMAGE $ML
+    cp -r $ML/* $MP
+
+    if [ "$LOC" = "austin" ]
+    then
+	cd $MP
+	/workspace/sw/jjacques/projects/austinify/austinify.sh \
+	    -c grr -i sysv -n -y kirkstone
+	cd --
+    fi
+
+    # Done with root.
+    umount $ML
+    umount $MP
 fi
 
 #############################
