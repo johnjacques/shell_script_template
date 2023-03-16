@@ -368,6 +368,8 @@ then
     tar xf $GUD_OROOT
     rm -rf lib/modules/*
     cp -r $GUD/$GUDV/root/lib/modules/* lib/modules
+    # For now, disable rasdaemon -- the database gets really big!
+    rm etc/rc*.d/S*rasdae*
     cd -
     umount $MP 
 
@@ -378,6 +380,8 @@ then
     tar xf $GUD_NROOT
     rm -rf lib/modules/*
     cp -r $GUD/$GUDV/root/lib/modules/* lib/modules
+    # For now, disable rasdaemon -- the database gets really big!
+    rm etc/rc*.d/S*rasdae*
     cd -
     umount $MP 
 
@@ -423,7 +427,7 @@ else
 
     MP=$(mktemp -d /tmp/image.sh.XXXXXXXXXX)
     ML=$(mktemp -d /tmp/image.sh.XXXXXXXXXX)
-    PU=$(blkid ${DISK}{PV}3 | awk '{ print $NF }' | cut -d'"' -f2)
+    PU=$(blkid ${DISK}${PV}3 | awk '{ print $NF }' | cut -d'"' -f2)
     SS=$(gdisk -l "${IMAGE}" | grep 'Sector size' | awk -e '{ print $4 }')
     BSS=$(gdisk -l "${IMAGE}" | grep msdos | awk -e '{ print $2 }')
     RSS=$(gdisk -l "${IMAGE}" | grep platform | awk -e '{ print $2 }')
@@ -451,8 +455,13 @@ else
 	cd $MP
 	/workspace/sw/jjacques/projects/austinify/austinify.sh \
 	    -c grr -i sysv -n -y kirkstone
-	cd --
+	cd -
     fi
+
+    # For now, disable rasdaemon -- the database gets really big!
+    cd $MP/etc
+    rm rc*.d/S*rasdae*
+    cd -
 
     # Done with root.
     umount $ML
