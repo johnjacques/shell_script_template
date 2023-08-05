@@ -102,11 +102,8 @@ function usage {
 ${SCRIPT_NAME} -d string [-h] [-k] [-l string] [-v] THEN '-i string' OR '-g number'
   -d : Disk to write [/dev/<disk name>].
   -g : Create a Grand Unified Disk, -l is required [guadalajara or austin]!
-       0: grr_a0_po and grr_k_904ec786_230218
-       1: grr_a0_po_fcs and grr_k_22d3bbb4_230224
-       2: same as 1, but with the SVOS kernel and eeupdate tools
-       3: same as 2, but with grr_a0_po_fcs and grr_k_f5612eb5_230227
-       4: grr_a0_po_rel2, grr_k_50c14748_230422, and i210 stuff
+       0: grr_a0_po_rel2, grr_k_50c14748_230422, and i210 stuff
+       1: grr_h_6c3b1825 [grr_ase_rdk_2308.rc1], grr_k_2bd5dc48, and i210 stuff
   -h : Display this wonderful help screen.
   -i : Wic image to write.
   -k : Keep temporary output instead of deleting it.
@@ -252,8 +249,6 @@ then
     # Image locations are hard-coded, and this will only work on
     # gmwl-dcg-0008 in GDC!
 
-    GUD_CUS=""
-    GUD_INT=""
     GUD_BOOT=""
     GUD_OROOT=""
     GUD_NROOT=""
@@ -262,58 +257,33 @@ then
     case $GUDV in
 
 	0)
-	    echo "Using grr_a0_po and grr_k_904ec786_230218"
-	    GUD_CUS="grr_a0_po"
-	    GUD_INT="grr_k_904ec786_230218"
+	    echo "Using grr_a0_po_rel2 and grr_k_50c14748_230422"
 	    ;;
 
 	1)
-	    echo "Using grr_a0_po_fcs and grr_k_22d3bbb4_230224"
-	    GUD_CUS="grr_a0_po_fcs"
-	    GUD_INT="grr_k_22d3bbb4_230224"
-	    ;;
-
-	2)
-	    echo "Using grr_a0_po_fcs and grr_k_22d3bbb4_230224"
-	    GUD_CUS="grr_a0_po_fcs"
-	    GUD_INT="grr_k_22d3bbb4_230224"
-	    ;;
-
-	3)
-	    echo "Using grr_a0_po_fcs and grr_k_f5612eb5_230227"
-	    GUD_CUS="grr_a0_po_fcs"
-	    GUD_INT="grr_k_f5612eb5_230227"
-	    ;;
-
-	4)
-	    echo "Using grr_a0_po_rel2 and grr_k_50c14748_230422"
-	    GUD_CUS="grr_a0_po_rel2"
-	    GUD_INT="grr_k_50c14748_230422"
+	    echo "Using grr_h_6c3b1825 [grr_ase_rdk_2308.rc1] and grr_k_2bd5dc48"
 	    ;;
 
 	*)
-	    echo "Valid versions of GUD are 0 and 1"
+	    echo "Valid versions of GUD are 4 and 5"
 	    exit 1
 	    ;;
     esac
 
     case $LOC in
 	"austin")
-	    GUD_BOOT="/tools/AGRreleases/yocto/grr/GUD/$GUDV/boot"
-	    GUD_OROOT="/tools/AGRreleases/yocto/hardknott/$GUD_CUS/axxia-grr-5.10/images/austinified.tgz"
-	    GUD_NROOT="/tools/AGRreleases/yocto/grr/$GUD_INT/ink/images/austinified.tgz"
-	    GUD_EXTRA="/tools/AGRreleases/yocto/grr/GUD/extra"
 	    GUD="/tools/AGRreleases/yocto/grr/GUD"
+	    GUD_BOOT="$GUD/$GUDV/boot"
+	    GUD_OROOT="$GUD/$GUDV/old_rfs_austinified.tar"
+	    GUD_NROOT="$GUD/$GUDV/new_rfs_austinified.tar"
+	    GUD_EXTRA="$GUD/extra"
 	    ;;
 	"gdc")
-	    GUD_BOOT="/home/yocto_releases/GUD/$GUDV/boot"
-	    GUD_OROOT="/home/yocto_releases/$GUD_CUS/images/axxia-image-dev-intel-axxia-grr.tar.gz"
-	    GUD_NROOT="/home/yocto_releases/$GUD_INT/ink/images/axxia-image-dev-intel-axxia-grr.tar.gz"
-	    GUD_EXTRA="/home/yocto_releases/GUD/extra"
-	    GUD="/home/yocto_releases/GUD"
+	    echo "OUT OF DATE!!!!  NO LONGER SUPPORTED!!!"
+	    exit 1
 	    ;;
 	*)
-	    echo "Valid locations are GDC and Austin!"
+	    echo "Only Austin is valid!"
 	    exit 1
 	    ;;
     esac
@@ -446,7 +416,7 @@ else
     cp -r $ML/* $MP
 
     # Update grub.cfg.
-    OPUID=$(cat $MP/EFI/BOOT/grub.cfg | grep PARTUUID | awk '{ print $3 }' | cut -d '=' -f 3)
+    OPUID=$(cat $MP/EFI/BOOT/grub.cfg | grep PARTUUID | awk '{ print $3 }' | cut -d '=' -f 3 | head -n 1)
     sed -i "s/$OPUID/$PU/" $MP/EFI/BOOT/grub.cfg
     sed -i 's/rootwait rootwait/rootwait/g' $MP/EFI/BOOT/grub.cfg
     sed -i 's/rootwait/rootwait ip=dhcp/g' $MP/EFI/BOOT/grub.cfg
