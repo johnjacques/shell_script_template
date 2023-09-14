@@ -1,0 +1,54 @@
+#!/bin/env python
+
+import argparse, logging, os, re, sys
+
+VERSION = __VERSION__
+
+def script_info():
+    print("--> " + os.path.basename(__file__) +
+          " version is {:s}".format(VERSION))
+    if os.path.isfile("/etc/os-release"):
+        osrf = open("/etc/os-release", "rt")
+        distribution = re.search("NAME=(.*)", osrf.read()).group(1)[1:-1]
+        osrf.seek(0)
+        version = re.search("VERSION_ID=(.*)", osrf.read()).group(1)[1:-1]
+        osrf.close()
+        print("--> running on " + distribution + ":" + version)
+    else:
+        print("--> running on something unknown (TODO: find out)")
+
+################################################################################
+## Functions for Modular Use
+################################################################################
+
+################################################################################
+## When Used as a Script
+################################################################################
+
+def main(argv):
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--loglevel', help="logger level",
+                        choices=['DEBUG', 'INFO', 'WARNING',
+                                 'ERROR', 'CRITICAL'], type=str.upper)
+    parser.add_argument("--logfile", help="file for logger output")
+    parser.add_argument('-v', '--version', help="display the version", action="store_true")
+    args = parser.parse_args()
+
+    # set up the logger
+    if args.loglevel:
+        loglevel = getattr(logging, args.loglevel)
+    else:
+        loglevel = logging.root.level
+
+    logging.basicConfig(level=loglevel,
+                        format='%(filename)s - %(levelname)s - %(message)s')
+
+    if args.logfile:
+        logging.getLogger().addHandler(logging.FileHandler(args.logfile))
+
+    if args.version:
+        script_info()
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
