@@ -62,15 +62,14 @@ KEEP_TEMP="false"
 # Display usage and exit with the given code.
 
 function usage {
-
     cat << EOF
-${SCRIPT_NAME} [-h] [-k] [-v]
+${SCRIPT_NAME} [-h] [-k] [-q] [-v]
   -h : Display this wonderful help screen.
   -k : Keep temporary output instead of deleting it.
   -v : Display the version.
 EOF
-    exit $1
 
+    exit $1
 }
 
 ##################################
@@ -78,28 +77,21 @@ EOF
 ##################################
 
 while getopts "hkv" option ; do
-
     case $option in
-
         h)
             usage 0
             ;;
-
 	k)
 	    KEEP_TEMP="true"
 	    ;;
-
 	v)
 	    script_info
 	    exit 0
 	    ;;
-
         *)
             usage 1
             ;;
-
     esac
-
 done
 
 shift $(($OPTIND - 1))
@@ -133,8 +125,6 @@ exec 2>$PIPE
 #######################
 # Do something useful #
 #######################
-
-script_info
 
 #############################
 # Restore stdout and stderr #
