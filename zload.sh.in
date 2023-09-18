@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+######################################################################
+#
+# zload.sh
+#
+# Display the load on a remote host or hosts.
+#
+######################################################################
+
+# Export everything
+set -a
+
+# Version
+VERSION=__VERSION__
+
+# Name
+SCRIPT_NAME=$(basename "${0}")
+
+# Script directory
+SCRIPT_DIR=`dirname $0`
+pushd ${SCRIPT_DIR} >/dev/null 2>&1
+SCRIPT_DIR=$(pwd)
+popd >/dev/null 2>&1
+
+#############
+# Functions #
+#############
+
+function getdv {
+    if [ -f /etc/os-release ]; then
+	# freedesktop.org and systemd
+	. /etc/os-release
+	DISTRO=$NAME
+	VER=$VERSION_ID
+    elif type lsb_release >/dev/null 2>&1; then
+	# linuxbase.org
+	DISTRO=$(lsb_release -si)
+	VER=$(lsb_release -sr)
+    else
+	# Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
+	DISTRO=$(uname -s)
+	VER=$(uname -r)
+    fi
+
+    echo "$DISTRO:$VER"
+}
+
+function script_info {
+    echo "--> ${SCRIPT_NAME} version is ${VERSION}"
+    echo "--> running on $(getdv)"
+}
+
+############
+# Defaults #
+############
+
+KEEP_TEMP="false"
+TIMEOUT=10
+
+######################################################################
+# usage_
+#
+# Display usage and exit with the given code.
+
+function usage {
+
+    cat << EOF
+${SCRIPT_NAME} [-h] [-k] [-t number] [-v] [space separated list of servers]
+  -h : Display this wonderful help screen.
+  -k : Keep temporary output instead of deleting it.
+  -t : Seconds to wait before giving up. [default is ${TIMEOUT}s]
+  -v : Display the version.
+EOF
+    exit $1
+
+}
+
+##################################
+# Parse the command line options #
+##################################
+
+while getopts "hkt:v" option ; do
+
+    case $option in
+
+        h)
+            usage 0
+            ;;
+
+	k)
+	    KEEP_TEMP="true"
+	    ;;
+
+	t)
+	    TIMEOUT=$OPTARG
+	    ;;
+
+	v)
+	    script_info
+	    exit 0
+	    ;;
+
+        *)
+            usage 1
+            ;;
+
+    esac
+
+done
+
+shift $(($OPTIND - 1))
+
+##########################################
+# Capture stdout and stdin in a log file #
+##########################################
+
+exec 3<&1
+exec 4<&2
+
+# Create a log file and redirect. 
+TEMP=$(mktemp -d /tmp/${SCRIPT_NAME}.XXXXXXXXXXXX)
+LOG=$TEMP/log
+PIPE=$TEMP/pipe
+
+if [ "$KEEP_TEMP" = "true" ]
+then
+    echo "--> Saving temporary files in ${TEMP}"
+else
+    trap "rm -rf $TEMP" EXIT
+fi
+
+mknod $PIPE p
+tee <$PIPE $LOG &
+exec 1>&-
+exec 1>$PIPE
+exec 2>&-
+exec 2>$PIPE
+
+#######################
+# Do something useful #
+#######################
+
+script_info
+
+DEFAULT_HOSTS="localhost"
+
+HOSTS=${@:-$DEFAULT_HOSTS}
+
+function host_string {
+    HOSTNAME=$1
+
+    # Is it in DNS?
+    nslookup $HOSTNAME 2>&1 | egrep "server can[\']t find" >/dev/null
+
+    if [[ $? != 1 ]]
+    then
+	echo "$HOSTNAME is not in DNS!"
+	return 1
+    fi
+
+    ping -W 1 -c 1 -q $HOSTNAME >/dev/null 2>&1
+
+    if [[ $? != 0 ]]
+    then
+	echo "$HOSTNAME is not available!"
+	return 1
+    fi
+
+    timeout $TIMEOUT ssh $HOSTNAME exit
+
+    if [[ $? != 0 ]]
+    then
+	echo "Slow login (>${TIMEOUT}s) on $HOSTNAME!"
+	return 1
+    fi
+
+    CORES=`ssh $HOSTNAME 'cat /proc/cpuinfo | egrep processor | wc -l'`
+    MEM=`ssh $HOSTNAME 'cat /proc/meminfo' \
+	| egrep MemTotal | cut -d':' -f2 \
+    	| sed 's/^[ \t]*//;s/[ \t]*$//' | cut -d' ' -f1`
+    let MEM="$MEM / 1024 /1024"
+    DESCRIPTION=`ssh $HOSTNAME 'lsb_release -a' 2>&1 | egrep Description \
+	| cut '-d:' -f2 |  sed 's/^[ \t]*//;s/[ \t]*$//' \
+	| sed 's/^Red[^0-9]*/Red Hat\ /'`
+    GLIBCV=`ssh $HOSTNAME 'ldd --version' | head -n 1 | awk '{print $NF}'`
+    LOAD=`ssh $HOSTNAME uptime | cut -d',' -f 4- | cut -d':' -f 2 \
+	| awk '{print $1 " " $2 " " $3}' | sed -e 's/ //g'`
+    LOAD1=`echo $LOAD | cut -d',' -f1`
+    LOAD5=`echo $LOAD | cut -d',' -f2`
+    LOAD15=`echo $LOAD | cut -d',' -f3`
+    printf "%s (%s/%dc/%dg/%sglibc) %4.2f (1m) %4.2f (5m) %4.2f (15m)\n" \
+	$HOSTNAME "$DESCRIPTION" $CORES $MEM $GLIBCV $LOAD1 $LOAD5 $LOAD15
+}
+
+jobs=()
+output=()
+
+for host in $HOSTS
+do
+    tfile=$(mktemp /tmp/zload.XXXXXXX)
+    output+=($tfile)
+    host_string $host >$tfile 2>&1 &
+    jobs+=(${!})
+done
+
+for index in ${!jobs[@]}
+do
+    job=${jobs[$index]}
+    wait $job
+    echo "$(cat ${output[$index]})"
+    rm -f ${output[$index]}
+done
+
+#############################
+# Restore stdout and stderr #
+#############################
+
+rm -f $PIPE
+exec 1<&3 3<&-
+exec 2<&4 4<&-
+
+##############
+# That's all #
+##############
+
+exit 0
