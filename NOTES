@@ -1,6 +1,6 @@
 ################################################################################
 ################################################################################
-	A Simple Starting Point for Shell Scripts
+	A Simple Starting Point for Scripts (Shell and Python)
 
 	- Uses GIT for versioning.
 	- Basic parameter handling.
@@ -12,10 +12,15 @@
 ## GNUmakefile ##
 #################
 
-Automatically builds a .sh for each .sh.in.  Targets are 'all' (the
-default) and 'clean' to clean things up.
+Automatically builds a .sh for each .sh.in and a .py for each .py.in.
+Targets are 'all' (the default) and 'clean' to clean things up.
 
-## script.sh.in ##
+## shell.sh.in ##
 ##################
 
-The example script -- does nothing...
+The example shell script -- does nothing...
+
+## python.py.in ##
+##################
+
+The example python script -- does nothing...

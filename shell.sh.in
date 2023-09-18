@@ -63,12 +63,11 @@ KEEP_TEMP="false"
 
 function usage {
     cat << EOF
-${SCRIPT_NAME} [-h] [-k] [-q] [-v]
+${SCRIPT_NAME} [-h|--help] [-k|--keep] [-v|--version]
   -h : Display this wonderful help screen.
   -k : Keep temporary output instead of deleting it.
   -v : Display the version.
 EOF
-
     exit $1
 }
 
@@ -76,25 +75,26 @@ EOF
 # Parse the command line options #
 ##################################
 
-while getopts "hkv" option ; do
-    case $option in
-        h)
-            usage 0
-            ;;
-	k)
-	    KEEP_TEMP="true"
-	    ;;
-	v)
-	    script_info
-	    exit 0
-	    ;;
-        *)
-            usage 1
-            ;;
+ARGS=$(getopt -a -o hkv --long help,keep,version -- "$@")
+
+if [[ $? -gt 0 ]]
+then
+    usage 1
+fi
+
+eval set -- ${ARGS}
+while :
+do
+    case $1 in
+        -h | --help) usage 0 ; shift ;;
+	-k | --keep) KEEP_TEMP="true" ; shift ;;
+	-v | --version) script_info ; exit 0 ;;
+	--) shift ; break ;;
+        *) usage 1 ;;
     esac
 done
 
-shift $(($OPTIND - 1))
+# $@ has all the options after --
 
 ##########################################
 # Capture stdout and stdin in a log file #
