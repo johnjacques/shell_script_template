@@ -179,8 +179,7 @@ rm -f dep_001
 
 for dep in $(ls dep_*)
 do
-    NAME="$(cat $dep | grep URI | grep -o '[^/]*$')"
-    NAME="${NAME%.*}"		# Remove the extension if there is one.
+    NAME="$(cat $dep | head -n 1)"
     URI="$(cat $dep | grep URI | cut -d' ' -f2)"
     BRANCH="$(cat $dep | grep branch | cut -d' ' -f2)"
     REV="$(cat $dep | grep revision | cut -d' ' -f2)"
@@ -188,7 +187,6 @@ do
     if [ -d "${NAME}" ]
     then
 	pushd "${NAME}" >/dev/null 2>&1
-	git fetch --all
 	git checkout "${BRANCH}" >/dev/null 2>&1 || \
 	    (echo "--> $BRANCH doesn't exist in $NAME!" ; exit 1)
 	US="$(git branch -vv | grep '\*' | awk '{ print $4 }')"
