@@ -1,129 +1,444 @@
-#!/usr/bin/env bash
-######################################################################
+#!/bin/bash
+################################################################################
 #
 # protex.sh
 #
-# Run protex scans...
+# Updates (or creates) a directory for protex scans and starts the scan...
 #
-######################################################################
-
-# Export everything
-set -a
+# To get a list of project IDs,
+#
+# bdstool list-projects --server "https://amrprotex003.devtools.intel.com" \
+#     --user $(cat ~/.email) --password $(cat ~/.password)
+#
+################################################################################
 
 # Version
 VERSION=__VERSION__
 
-# Name
-SCRIPT_NAME=$(basename "${0}")
+################################################################################
+# Display the RCS Header
 
-# Script directory
-SCRIPT_DIR=`dirname $0`
-pushd ${SCRIPT_DIR} >/dev/null 2>&1
-SCRIPT_DIR=$(pwd)
-popd >/dev/null 2>&1
+function protex_sh_version {
+    echo "--> protex.sh Version is..."
+    echo
+    echo "${VERSION}"
+    echo
+    echo "$(uname -a)"
+    echo ""
+}
 
-#############
-# Functions #
-#############
+################################################################################
+# update_original
 
-function getdv {
-    if [ -f /etc/os-release ]; then
-	# freedesktop.org and systemd
-	. /etc/os-release
-	DISTRO=$NAME
-	VER=$VERSION_ID
-    elif type lsb_release >/dev/null 2>&1; then
-	# linuxbase.org
-	DISTRO=$(lsb_release -si)
-	VER=$(lsb_release -sr)
-    else
-	# Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
-	DISTRO=$(uname -s)
-	VER=$(uname -r)
+function update_original {
+    CLONE=$1
+    SB=$2
+    OUTPUT=$3
+    TEMP=$4
+
+    # Full copy of everything except .git.
+    if [ ! -d "$CLONE" ]
+    then
+	echo "CLONE, $CLONE, does not exist!"
+	exit 1;
     fi
 
-    echo "$DISTRO:$VER"
+    pushd $CLONE >/dev/null 2>&1
+    git checkout $SB
+    git fetch
+    git reset --hard origin/$SB
+    git status
+    git describe --always
+    popd >/dev/null 2>&1
+
+    mkdir -p "${OUTPUT}/scan"
+    rsync -avzh --delete --exclude='.git/' "${CLONE}/" "${OUTPUT}/scan/"
+
+    pushd "${OUTPUT}/scan" >/dev/null 2>&1
+    find . -type f >../files
+    popd >/dev/null 2>&1
 }
 
-function script_info {
-    echo "--> ${SCRIPT_NAME} version is ${VERSION}"
-    echo "--> running on $(getdv)"
+################################################################################
+# update_copy
+
+function update_copy {
+    CLONE=$1
+    SB=$2
+    DB=$3
+    OUTPUT=$4
+    TEMP=$5
+
+    pushd $CLONE >/dev/null 2>&1
+    CLONE=`pwd`
+    popd >/dev/null 2>&1
+
+    rm -rf $OUTPUT/scan
+    mkdir -p $OUTPUT/scan
+
+    pushd $CLONE >/dev/null 2>&1
+    # Update local .git.
+    git fetch --all
+    # Update $SB.
+    git checkout $SB
+    git reset --hard origin/$SB
+    # Update $DB
+    git checkout $DB
+    git reset --hard origin/$DB
+    # Describe and diff.
+    git status
+    DESCRIPTION=$(git describe --always)
+    git diff --name-only $SB >$TEMP/files
+    popd >/dev/null 2>&1
+
+    echo ""
+    echo "--> Description"
+    echo ""
+    echo "In $CLONE"
+    echo "Getting  all file changes from $SB to $DB"
+    echo "List of files is in $OUTPUT/files"
+    echo "Branch $DB is $DESCRIPTION"
+
+    cp $TEMP/files $OUTPUT/files
+
+    for file in $(cat $OUTPUT/files)
+    do
+	DIR=$(dirname $file)
+	FILE=$(basename $file)
+
+	if [ -f "$CLONE/$DIR/$FILE" ]
+	then
+	    mkdir -p $OUTPUT/scan/$DIR
+	    cp "$CLONE/$DIR/$FILE" "$OUTPUT/scan/$DIR"
+	fi
+    done
 }
 
-############
-# Defaults #
-############
+## Options
 
-KEEP_TEMP="false"
-SERVER="https://amrprotex003.devtools.intel.com"
+DEFAULT_SERVER="https://amrprotex003.devtools.intel.com"
 
-######################################################################
-# usage_
+# (CLONE, BRANCH, OUTPUT, SERVER, PROJECT)
+declare -a OPTIONS=("" "" "" "" "${DEFAULT_SERVER}" "" "")
+
+# presets...
+
+P=/v/share/protex
+
+declare -a OPTIONS_ATF=(\
+    "Axxia BSP ATF" \
+    "/v/share/protex/ATF/atf" \
+    "atf_84091c4:next/axxia-dev" \
+    "/v/share/protex/ATF/tip" \
+    "${DEFAULT_SERVER}" \
+    "c_axxiaatf_17429" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_UBOOT_X7=( \
+    "Axxia BSP U-Boot for X7" \
+    "/v/share/protex/U-BOOT/u-boot" \
+    "5500/base/axxia-dev:5500/next/axxia-dev" \
+    "/v/share/protex/U-BOOT/tip_5500" \
+    "${DEFAULT_SERVER}" \
+    "c_axxiau-bootforx7_18397" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_UBOOT_X9XLF=( \
+    "Axxia BSP U-Boot for X9/XLF" \
+    "/v/share/protex/U-BOOT/u-boot" \
+    "u-boot_v2015.10:next/axxia-dev" \
+    "/v/share/protex/U-BOOT/tip_u-boot_v2015.10" \
+    "${DEFAULT_SERVER}" \
+    "c_axxiau-bootforx9xlf_17434" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_LINUX_4_1=( \
+    "Axxia BSP Linux 4.1" \
+    "/v/share/protex/LINUX_4.1/axxia_yocto_linux_4.1_private" \
+    "standard/base:next/standard/axxia-dev/base" \
+    "/v/share/protex/LINUX_4.1/tip" \
+    "${DEFAULT_SERVER}" \
+    "c_linux41foraxxia_18296" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_LINUX_4_19=( \
+    "Axxia BSP Linux 4.19" \
+    "/v/share/protex/LINUX_4.19/linux-yocto_private" \
+    "swlc/v4.19/base:swlc/v4.19/release" \
+    "/v/share/protex/LINUX_4.19/tip" \
+    "${DEFAULT_SERVER}" \
+    "c_linux419foraxxiagen2_20091" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_LINUX_5_10=( \
+    "Axxia BSP Linux 5.10" \
+    "/v/share/protex/LINUX/axxia-linux" \
+    "swlc/v5.10/base:swlc/v5.10/release" \
+    "/v/share/protex/LINUX/tip_5.10" \
+    "${DEFAULT_SERVER}" \
+    "c_linux510foraxxia_23597" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_LINUX_5_15=( \
+    "Axxia BSP Linux 5.15" \
+    "/v/share/protex/LINUX/axxia-linux" \
+    "swlc/v5.15/base:swlc/v5.15/release" \
+    "/v/share/protex/LINUX/tip_5.15" \
+    "${DEFAULT_SERVER}" \
+    "c_linux515foraxxia_25074" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_SUPPORT_GRR=( \
+    "BSP Suppport for GRR" \
+    "/v/share/protex/SUPPORT/support" \
+    "grr/main" \
+    "/v/share/protex/SUPPORT/tip_grr" \
+    "${DEFAULT_SERVER}" \
+    "c_supportgrr_25073" \
+    "john.jacques@intel.com,john.logan@intel.com" \
+)
+
+declare -a OPTIONS_SUPPORT_SNR=( \
+    "BSP Suppport for SNR" \
+    "/v/share/protex/SUPPORT/support" \
+    "snr/main" \
+    "/v/share/protex/SUPPORT/tip_snr" \
+    "${DEFAULT_SERVER}" \
+    "c_supportsnr_25072" \
+    "john.jacques@intel.com,john.logan@intel.com" \
+)
+
+declare -a OPTIONS_SUPPORT_AXXIA=( \
+    "BSP Suppport for Axxia" \
+    "/v/share/protex/SUPPORT/support" \
+    "axxia/main" \
+    "/v/share/protex/SUPPORT/tip_axxia" \
+    "${DEFAULT_SERVER}" \
+    "c_axxiasupport_17486" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_AXXIA_THUD=( \
+    "Axxia BSP meta-axxia, Thud" \
+    "/v/share/protex/META-AXXIA/meta-axxia" \
+    "next/thud" \
+    "/v/share/protex/META-AXXIA/tip_thud" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-axxiathud_22855" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_AXXIA_HARDKNOTT=( \
+    "Axxia BSP meta-axxia, Hardknot1t" \
+    "/v/share/protex/META-AXXIA/meta-axxia" \
+    "next/hardknott" \
+    "/v/share/protex/META-AXXIA/tip_hardknott" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-axxiahardknott_23598" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_AXXIA_KIRKSTONE=( \
+    "Axxia BSP meta-axxia, Kirkstone" \
+    "/v/share/protex/META-AXXIA/meta-axxia" \
+    "next/kirkstone" \
+    "/v/share/protex/META-AXXIA/tip_kirkstone" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-axxiakirkstone_25075" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_INTEL_AXXIA_THUD=( \
+    "Axxia BSP meta-intel-axxia, Thud" \
+    "/v/share/protex/META-INTEL-AXXIA/meta-intel-axxia_private" \
+    "next/thud" \
+    "/v/share/protex/META-INTEL-AXXIA/tip_thud" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-intel-axxiathud_20047" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_INTEL_AXXIA_DUNFELL=( \
+    "Axxia BSP meta-intel-axxia, Dunfell" \
+    "/v/share/protex/META-INTEL-AXXIA/meta-intel-axxia_private" \
+    "next/dunfell" \
+    "/v/share/protex/META-INTEL-AXXIA/tip_dunfell" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-intel-axxiadunfell_22854" \
+    "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_INTEL_AXXIA_HARDKNOTT=( \
+    "Axxia BSP meta-intel-axxia, Hardknott" \
+    "/v/share/protex/META-INTEL-AXXIA/meta-intel-axxia" \
+    "next/hardknott" \
+    "/v/share/protex/META-INTEL-AXXIA/tip_hardknott" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-intel-axxiahardknott_23401" \
+    "john.jacques@intel.com" \
+)
+
+################################################################################
+# usage
 #
 # Display usage and exit with the given code.
 
 function usage {
-
     cat << EOF
-${SCRIPT_NAME} [-h] [-k] [-v]
+usage : protex.sh -h
+   OR : protex.sh -t original|copy -c directory -b name[:name] [-o directory]
+                  -s server -p project
+   OR : protex.sh -X
+   OR : protex.sh -x preset
+
   -h : Display this wonderful help screen.
-  -k : Keep temporary output instead of deleting it.
-  -v : Display the version.
+
+  -t : original|copy.  Required -- no default.
+  -c : The clone.
+  -b : The branch name (if -t original) or original:development
+       (original only chnages on the development branch, when comparted to
+       the original branch, will be considered).
+  -o : The output directory.
+  -s : Protex server, default is ${DEFAULT_SERVER}
+  -p : The Protex project id.  Required -- no default.
+
+  -X : Display avaialble presets.
+  -x : Use default options for the given preset.
 EOF
     exit $1
-
 }
 
-##################################
-# Parse the command line options #
-##################################
+################################################################################
+# Parse the command line options
 
-while getopts "hkv" option ; do
+while getopts "ht:c:b:o:s:p:x:X" option ; do
 
     case $option in
 
         h)
             usage 0
             ;;
-
-	k)
-	    KEEP_TEMP="true"
+	t)
+	    TYPE=$OPTARG
 	    ;;
-
-	v)
-	    script_info
+	c)
+	    OPTIONS[0]=$OPTARG
+	    ;;
+	b)
+	    OPTIONS[1]=$OPTARG
+	    ;;
+	o)
+	    OPTIONS[2]=$OPTARG
+	    ;;
+	s)
+	    OPTIONS[3]=$OPTARG
+	    ;;
+	p)
+	    OPTIONS[4]=$OPTARG
+	    ;;
+	x)
+	    case $OPTARG in
+		"atf")
+		    OPTIONS=("${OPTIONS_ATF[@]}")
+		    ;;
+		"uboot_x7")
+		    OPTIONS=("${OPTIONS_UBOOT_X7[@]}")
+		    ;;
+		"uboot_x9xlf")
+		    OPTIONS=("${OPTIONS_UBOOT_X9XLF[@]}")
+		    ;;
+		"linux_4_1")
+		    OPTIONS=("${OPTIONS_LINUX_4_1[@]}")
+		    ;;
+		"linux_4_19")
+		    OPTIONS=("${OPTIONS_LINUX_4_19[@]}")
+		    ;;
+		"linux_5_10")
+		    OPTIONS=("${OPTIONS_LINUX_5_10[@]}")
+		    ;;
+		"linux_5_15")
+		    OPTIONS=("${OPTIONS_LINUX_5_15[@]}")
+		    ;;
+		"support_axxia")
+		    OPTIONS=("${OPTIONS_SUPPORT_AXXIA[@]}")
+		    ;;
+		"support_snr")
+		    OPTIONS=("${OPTIONS_SUPPORT_SNR[@]}")
+		    ;;
+		"support_grr")
+		    OPTIONS=("${OPTIONS_SUPPORT_GRR[@]}")
+		    ;;
+		"meta-axxia_thud")
+		    OPTIONS=("${OPTIONS_META_AXXIA_THUD[@]}")
+		    ;;
+		"meta-axxia_hardknott")
+		    OPTIONS=("${OPTIONS_META_AXXIA_HARDKNOTT[@]}")
+		    ;;
+		"meta-axxia_kirkstone")
+		    OPTIONS=("${OPTIONS_META_AXXIA_KIRKSTONE[@]}")
+		    ;;
+		"meta-intel-axxia_thud")
+		    OPTIONS=("${OPTIONS_META_INTEL_AXXIA_THUD[@]}")
+		    ;;
+		"meta-intel-axxia_dunfell")
+		    OPTIONS=("${OPTIONS_META_INTEL_AXXIA_DUNFELL[@]}")
+		    ;;
+		"meta-intel-axxia_hardknott")
+		    OPTIONS=("${OPTIONS_META_INTEL_AXXIA_HARDKNOTT[@]}")
+		    ;;
+		*)
+		    echo "INVALID PRESET"
+		    usage 1
+		    ;;
+	    esac
+	    ;;
+	X)
+	    echo "atf : scan the latest on next/axxia-dev."
+	    echo "uboot_x7 : scan the latest on next/lsi-v2013.01.01."
+	    echo "uboot_x9xlf : scan next/axxia-dev."
+	    echo "linux_4_1 : scan the latest on next/standard/axxia-dev/base."
+	    echo "linux_4_19 : scan the latest on " \
+		 "next/v4.19/standard/axxia-dev/base."
+	    echo "linux_5_10 : scan the latest on swlc/v5.10/release"
+	    echo "linux_5_15 : scan the latest on swlc/v5.15/release"
+	    echo "support_axxia : scan the latest on axxia/main."
+	    echo "support_snr : scan the latest on snr/main."
+	    echo "support_grr : scan the latest on grr/main."
+	    echo "meta-axxia_thud : scan the latest on next/thud."
+	    echo "meta-axxia_hardknott : scan the latest on next/hardknott."
+	    echo "meta-axxia_kirkstone : scan the latest on next/kirkstone."
+	    echo "meta-intel-axxia_thud : scan the latest on next/thud."
+	    echo "meta-intel-axxia_dunfell : scan the latest on dunfell."
+	    echo "meta-intel-axxia_hardknott : scan the latest on hardknott."
 	    exit 0
 	    ;;
-
         *)
             usage 1
             ;;
-
     esac
 
 done
 
 shift $(($OPTIND - 1))
 
-##########################################
-# Capture stdout and stdin in a log file #
-##########################################
+################################################################################
+# Capture stdout and stdin in a log file.
 
 exec 3<&1
 exec 4<&2
 
 # Create a log file and redirect. 
-TEMP=$(mktemp -d /tmp/${SCRIPT_NAME}.XXXXXXXXXXXX)
+TEMP=`mktemp -d /tmp/protex.sh.XXXXXXXXXXXX`
 LOG=$TEMP/log
 PIPE=$TEMP/pipe
-
-if [ "$KEEP_TEMP" = "true" ]
-then
-    echo "--> Saving temporary files in ${TEMP}"
-else
-    trap "rm -rf $TEMP" EXIT
-fi
-
+trap "rm -rf $TEMP" EXIT
 mknod $PIPE p
 tee <$PIPE $LOG &
 exec 1>&-
@@ -131,22 +446,93 @@ exec 1>$PIPE
 exec 2>&-
 exec 2>$PIPE
 
-#######################
-# Do something useful #
-#######################
+# Display the version of the script...
 
-script_info
+protex_sh_version
 
-#############################
-# Restore stdout and stderr #
-#############################
+# Update the destination.
 
-rm -f $PIPE
+echo "--> Updating the Scan Directory..."
+echo""
+
+B=${OPTIONS[2]}
+echo $B | egrep ':' >/dev/null 2>&1
+
+if [ 0 -eq $? ]
+then
+    B1=${B%:*}
+    B2=${B#*:}
+    time update_copy ${OPTIONS[1]} ${B1} ${B2} ${OPTIONS[3]} $TEMP
+else
+    time update_original ${OPTIONS[1]} ${B} ${OPTIONS[3]} $TEMP
+fi
+
+echo ""
+
+# Scan
+
+echo "--> Scanning"
+echo""
+
+time bdstool analyze \
+     --user $(cat ~/.email) \
+     --password $(cat ~/.password) \
+     --server ${OPTIONS[4]} \
+     --verbose --expert-mode --no-new-project --pure-project ${OPTIONS[5]} \
+     --path ${OPTIONS[3]}/scan
+
+echo ""
+
+# Create the "report"
+
+cat $TEMP/log | \
+    sed -n -e '/\-\-> protex.sh Version/,$p' | \
+    sed -e '/^$/,$d' >${OPTIONS[3]}/report
+
+echo "--> Description" >>${OPTIONS[3]}/report
+
+cat $TEMP/log | \
+    sed -e '1,/\-\-> Description/d' | tail -n +2 | \
+    sed -e '/^$/,$d' >>${OPTIONS[3]}/report
+
+echo "--> Result" >>${OPTIONS[3]}/report
+
+cat $TEMP/log | \
+    sed -e '1,/Analyzing project scan/d' | \
+    sed -e '/^$/,$d' >>${OPTIONS[3]}/report
+
+# Email Report
+
+echo "--> Sending the Report"
+
+cat $TEMP/log | egrep 'login failed' >/dev/null
+
+if [ $? -eq 0 ]
+then
+    SUBJECT="${SUBJECT} : SCRIPT FAILED"
+    cat $TEMP/log | sed 's/^/  /g' | mail -s "protex.sh FAILED" "${OPTIONS[6]}"
+else
+    cat $TEMP/log | egrep pending >/dev/null
+
+    if [ $? -eq 0 ]
+    then
+	SUBJECT="protex.sh : MATCHES : ${OPTIONS[0]}"
+    else
+	SUBJECT="protex.sh : CLEAN : ${OPTIONS[0]}"
+    fi
+
+    cat ${OPTIONS[3]}/report | sed 's/^/  /g' \
+	| mail -s "${SUBJECT}" "${OPTIONS[6]}"
+fi
+
+# Restore stdout and stderr.
 exec 1<&3 3<&-
 exec 2<&4 4<&-
 
-##############
-# That's all #
-##############
+# Save the log file.
+cp $TEMP/log ${OPTIONS[3]}/log
+
+# Delete the temporary directory.
+rm -rf $TEMP
 
 exit 0
