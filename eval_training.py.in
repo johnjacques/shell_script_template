@@ -1,0 +1,197 @@
+#!/bin/env python3
+
+import argparse, chess.pgn, chess.svg, cv2, logging, multiprocessing
+import numpy, os, re, sys
+
+from cairosvg import svg2png
+from io import BytesIO
+from PIL import Image
+from subprocess import Popen, PIPE
+
+VERSION = __VERSION__
+
+def script_info():
+    print("--> " + os.path.basename(__file__) +
+          " version is {:s}".format(VERSION))
+    if os.path.isfile("/etc/os-release"):
+        osrf = open("/etc/os-release", "rt")
+        distribution = re.search("NAME=(.*)", osrf.read()).group(1)[1:-1]
+        osrf.seek(0)
+        version = re.search("VERSION_ID=(.*)", osrf.read()).group(1)[1:-1]
+        osrf.close()
+        print("--> running on " + distribution + ":" + version)
+    else:
+        print("--> running on something unknown (TODO: find out)")
+
+################################################################################
+## Functions for Modular Use
+################################################################################
+
+################################################################################
+## When Used as a Script
+################################################################################
+
+def main(argv):
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--file', '-f', help="file of one or more pgns")
+    parser.add_argument('--game', '-g', help="which game")
+    parser.add_argument('--loglevel', help="logger level",
+                        choices=['DEBUG', 'INFO', 'WARNING',
+                                 'ERROR', 'CRITICAL'], type=str.upper)
+    parser.add_argument("--logfile", help="file for logger output")
+    parser.add_argument('--move', '-m', help="the move")
+    parser.add_argument('-v', '--version', help="display the version",
+                        action="store_true")
+    args = parser.parse_args()
+
+    # set up the logger
+    if args.loglevel:
+        loglevel = getattr(logging, args.loglevel)
+    else:
+        loglevel = logging.root.level
+
+    logging.basicConfig(level=loglevel,
+                        format='%(filename)s - %(levelname)s - %(message)s')
+
+    if args.logfile:
+        logging.getLogger().addHandler(logging.FileHandler(args.logfile))
+
+    if args.version:
+        script_info()
+
+    pgn = open(args.file)
+    the_game = int(args.game)
+
+    for i in range(1, the_game, 1):
+        chess.pgn.skip_game(pgn)
+
+    game = chess.pgn.read_game(pgn)
+    board = game.board()
+
+    for number, move in enumerate(game.mainline_moves()):
+        if number == args.move:
+            break
+        board.push(move)
+
+    cmd = ['xrandr', '--query']
+    p = Popen(cmd, stdout=PIPE, stdin=PIPE)
+    stdout, stderr = p.communicate()
+    strout = "".join(map(chr, stdout))
+    displays = []
+    regex = re.compile('\Wconnected.*\W([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)')
+    for line in strout.splitlines():
+        result = regex.search(line)
+        if result:
+            displays.append(((result.groups()[0]), (result.groups()[1]),
+                             (result.groups()[2]), (result.groups()[3])))
+
+    cmd = ['xprop', '-root']
+    p = Popen(cmd, stdout=PIPE, stdin=PIPE)
+    stdout, stderr = p.communicate()
+    strout = "".join(map(chr, stdout))
+    regex = re.compile('_NET_ACTIVE_WINDOW\(WINDOW\).*\W(0x[0-9a-f]*)$')
+    for line in strout.splitlines():
+        result = regex.search(line)
+        if result:
+            window_id = result.groups()[0]
+
+    x = 0
+    y = 0
+    cmd = ['xwininfo', "-id", window_id]
+    p = Popen(cmd, stdout=PIPE, stdin=PIPE)
+    stdout, stderr = p.communicate()
+    strout = "".join(map(chr, stdout))
+    regex = re.compile('Absolute upper-left ([XY]):\W+([0-9]+)')
+    for line in strout.splitlines():
+        result = regex.search(line)
+        if result:
+            if result.groups()[0] == 'X':
+                x = int(result.groups()[1])
+            if result.groups()[0] == 'Y':
+                y = int(result.groups()[1])
+
+    pos = (x, y)
+
+    for display in displays:
+        dw = int(display[0])
+        do = int(display[2])
+        if pos[0] > dw and pos[0] < dw + do:
+            break
+
+    x = int(display[2])
+    w = int(display[0])
+    y = int(display[3])
+    h = int(display[1])
+
+    if w < h:
+        img_sz = int(w / 1.5)
+    else:
+        img_sz = int(h / 1.5)
+
+    posx = x + int((w - img_sz) / 2)
+    posy = y + int((h - img_sz) / 2)
+
+    svg = chess.svg.board(board, size=img_sz)
+    png = svg2png(bytestring=svg)
+    pil_img = Image.open(BytesIO(png)).convert('RGBA')
+    img = cv2.cvtColor(numpy.array(pil_img), cv2.COLOR_RGBA2BGRA)
+    height, width = img.shape[:2]
+    cv2.imshow("Board", img)
+    cv2.moveWindow("Board", posx, posy)
+
+    while True:
+        if cv2.waitKey(1) != -1:
+            # Any key press.
+            break
+        if cv2.getWindowProperty("Board", cv2.WND_PROP_VISIBLE) < 1:
+            # Mouse click on the "X" etc.
+            break
+
+    cv2.destroyAllWindows()
+
+    sf = Popen('stockfish', stdout=PIPE, stdin=PIPE)
+    sf.stdin.write(str.encode("position fen " + board.fen() + "\n"))
+    cores = multiprocessing.cpu_count()
+    sf.stdin.write(str.encode("setoption name Threads value " +
+                              str(cores) + "\n"))
+    sf.stdin.write(b"eval\n")
+    stdout, stderr = sf.communicate()
+    strout = "".join(map(chr, stdout))
+
+    # In some cases, currently in check for example, no evaluation is available.
+    re_incheck = re.compile('^Final evaluation: none \(in check\)$')
+
+    re_ver = re.compile('^Stockfish\W([0-9\.]+)\Wby the Stockfish developers')
+    re_bkt = re.compile("^.*?([0-9\.]+).*?([0-9\.]+).*?([0-9\.]+).*?"
+                        "([0-9\.]+).*?used$")
+    re_final = re.compile('^Final\Wevaluation.*?([\+\-0-9\.]+).*')
+
+    evaluation_available = True
+
+    for line in strout.splitlines():
+        result = re_incheck.search(line)
+        if result:
+            evaluation_available = False
+            break
+        result = re_ver.search(line)
+        if result:
+            sf_ver = result.groups()[0]
+            continue
+        result = re_bkt.search(line)
+        if result:
+            sf_bkt = (result.groups()[1], result.groups()[2], result.groups()[3])
+            continue
+        result = re_final.search(line)
+        if result:
+            sf_final = result.groups()[0]
+
+    if evaluation_available:
+        print(f"Stockfish version {sf_ver} claims the following.\n\tMaterial  "
+              f"{sf_bkt[0]}\n\tPosition  {sf_bkt[1]}\n\t    "
+              f"NNUE  {sf_bkt[2]}\n\t Overall {sf_final}")
+    else:
+        print("Stockfish evaluation is not available (in check)")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
