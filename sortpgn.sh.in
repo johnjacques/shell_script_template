@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+######################################################################
+#
+# sortpgn.sh
+#
+# Sort games in a PGN file -- assuming it's from my GothemChess study
+# output ([White <the chapter>] and [Black <the study>])!!!
+#
+######################################################################
+
+# Export everything
+set -a
+
+# Version
+VERSION=__VERSION__
+
+# Name
+SCRIPT_NAME=$(basename "${0}")
+
+# Script directory
+SCRIPT_DIR=`dirname $0`
+pushd ${SCRIPT_DIR} >/dev/null 2>&1
+SCRIPT_DIR=$(pwd)
+popd >/dev/null 2>&1
+
+#############
+# Functions #
+#############
+
+function getdv {
+    if [ -f /etc/os-release ]; then
+	# freedesktop.org and systemd
+	. /etc/os-release
+	DISTRO=$NAME
+	VER=$VERSION_ID
+    elif type lsb_release >/dev/null 2>&1; then
+	# linuxbase.org
+	DISTRO=$(lsb_release -si)
+	VER=$(lsb_release -sr)
+    else
+	# Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
+	DISTRO=$(uname -s)
+	VER=$(uname -r)
+    fi
+
+    echo "$DISTRO:$VER"
+}
+
+function script_info {
+    echo "--> ${SCRIPT_NAME} version is ${VERSION}"
+    echo "--> running on $(getdv)"
+}
+
+############
+# Defaults #
+############
+
+KEEP_TEMP="false"
+
+######################################################################
+# usage_
+#
+# Display usage and exit with the given code.
+
+function usage {
+    cat << EOF
+${SCRIPT_NAME} [-h|--help] [-k|--keep] [-v|--version]
+  -h : Display this wonderful help screen.
+  -k : Keep temporary output instead of deleting it.
+  -v : Display the version.
+EOF
+    exit $1
+}
+
+##################################
+# Parse the command line options #
+##################################
+
+ARGS=$(getopt -a -o hkv --long help,keep,version -- "$@")
+
+if [[ $? -gt 0 ]]
+then
+    usage 1
+fi
+
+eval set -- ${ARGS}
+while :
+do
+    case $1 in
+        -h | --help) usage 0 ; shift ;;
+	-k | --keep) KEEP_TEMP="true" ; shift ;;
+	-v | --version) script_info ; exit 0 ;;
+	--) shift ; break ;;
+        *) usage 1 ;;
+    esac
+done
+
+# $@ has all the options after --
+
+##########################################
+# Capture stdout and stdin in a log file #
+##########################################
+
+exec 3<&1
+exec 4<&2
+
+# Create a log file and redirect. 
+TEMP=$(mktemp -d /tmp/${SCRIPT_NAME}.XXXXXXXXXXXX)
+LOG=$TEMP/log
+PIPE=$TEMP/pipe
+
+if [ "$KEEP_TEMP" = "true" ]
+then
+    echo "--> Saving temporary files in ${TEMP}"
+else
+    trap "rm -rf $TEMP" EXIT
+fi
+
+mknod $PIPE p
+tee <$PIPE $LOG &
+exec 1>&-
+exec 1>$PIPE
+exec 2>&-
+exec 2>$PIPE
+
+#######################
+# Do something useful #
+#######################
+
+## Remove spaces for csplit.
+cat studies.pgn | sed '/^[[:space:]]*$/d' > condensed.pgn
+
+## Split into multiple files.
+csplit -z condensed.pgn '/Event /' '{*}'
+rm -f condensed.pgn
+
+## Rename based on chapter and study.
+chapter_pattern="Chapter ([0-9]+)"
+study_pattern="Study ([0-9])"
+for f in $(ls xx*)
+do
+    chapter_pattern="Chapter ([0-9]+)"
+    chapter=$(if [[ $(cat $f | grep '^\[White ') =~ $chapter_pattern ]] ; then echo ${BASH_REMATCH[1]} ; fi)
+    study_pattern="Study ([0-9])"
+    study=$(if [[ $(cat $f | grep '^\[Black ') =~ $study_pattern ]] ; then echo ${BASH_REMATCH[1]} ; fi)
+    mv $f s_${chapter}_${study}
+done
+
+## Update studies.pgn...
+rm -f studies.pgn
+for f in $(ls s_*)
+do
+    cat $f >> studies.pgn
+    echo >> studies.pgn
+done
+
+## Remove blank lines at the end...
+sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' studies.pgn
+
+## Cleanup...
+rm -f s_*
+
+#############################
+# Restore stdout and stderr #
+#############################
+
+rm -f $PIPE
+exec 1<&3 3<&-
+exec 2<&4 4<&-
+
+##############
+# That's all #
+##############
+
+exit 0
