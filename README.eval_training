@@ -1,0 +1,38 @@
+################################################################################
+################################################################################
+	README for eval_training.py
+################################################################################
+################################################################################
+
+An evaluation trainer!
+
+Basic usage is as follows.
+
+      eval_training.py --file <pgn file> --game <game> --move <move>
+
+A chessboard of the given game (from the given file of pgns) at the
+given move, will be shown.  Come up with an evaluation.  Close the
+window, or press any key, to see what stockfish thinks!
+
+################
+## Some Notes ##
+################
+
+# Counting Games #
+##################
+
+For large pgn files, it can take some time to count the number of
+games.  So, instead of counting the games in the input file, just fail
+if the requested game is not available.
+
+As an example, the LumbrasGigaBase.pgn file
+[https://sourceforge.net/projects/lumbrasgigabase/files/], or at least
+the one I have, has 13207715 games.  Counting this with a simple shell
+command
+
+   cat <the pgn file> | egrep '^\[Event\W' | wc -l
+
+takes almost 3 minutes on my system.  So, there is no attempt to count games.
+
+The move is treated the same way.  The command will fail if the
+specified game does not have enough moves.
