@@ -130,7 +130,8 @@ exec 2>$PIPE
 #######################
 
 ## Use rsync to update ~/Cloud/Drive/Chess.
-rsync -avh Learning/ /home/john/Cloud/Drive/Chess/ --delete
+rsync -avh /home/john/shared/Chess/Learning/ \
+      /home/john/Cloud/Drive/Chess/ --delete
 
 ## Use rclone to update Chess in Google Drive.
 rclone sync /home/john/Cloud/Drive/Chess Drive:/Chess
