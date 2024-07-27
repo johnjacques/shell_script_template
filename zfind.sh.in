@@ -148,11 +148,16 @@ exec 2>$PIPE
 # Do something useful #
 #######################
 
-script_info
+#script_info
 
 find "$@" | while read f
 do
-    echo "--> Processing $f"
+    if [[ "${f}" =~ ".git" ]]
+    then
+	continue
+    fi
+
+    echo "\"${f}\""
 done
 
 #############################
