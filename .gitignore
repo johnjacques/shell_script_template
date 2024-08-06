@@ -3,3 +3,6 @@
 *.py.d
 *.sh
 *.sh.d
+# symlinks to files...
+python_template
+shell_template
