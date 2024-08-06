@@ -4,5 +4,11 @@
 *.sh
 *.sh.d
 # symlinks to files...
+coverity
+match_deps
+protex
 python_template
 shell_template
+yocto_build
+zfind
+zload
