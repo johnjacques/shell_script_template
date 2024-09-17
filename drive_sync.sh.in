@@ -129,9 +129,20 @@ exec 2>$PIPE
 # Do something useful #
 #######################
 
+pushd /home/john/shared/Chess/Learning >/dev/null 2>&1
+
+## Make sure any libreoffice documents are available as PDF.
+find . -type f -iname "*.odt" | while read in
+do
+    out=${in%.odt}.pdf
+    outdir=$(dirname "$out")
+    libreoffice --convert-to pdf *.odt --outdir "$outdir"
+done
+
 ## Use rsync to update ~/Cloud/Drive/Chess.
-rsync -avh /home/john/shared/Chess/Learning/ \
-      /home/john/Cloud/Drive/Chess/ --delete
+rsync -avh ./ /home/john/Cloud/Drive/Chess/ --delete
+
+popd >/dev/null 2>&1
 
 ## Use rclone to update Chess in Google Drive.
 rclone sync /home/john/Cloud/Drive/Chess Drive:/Chess
