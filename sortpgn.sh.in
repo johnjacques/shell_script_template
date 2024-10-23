@@ -56,6 +56,7 @@ function script_info {
 ############
 
 KEEP_TEMP="false"
+PGN=""
 
 ######################################################################
 # usage_
@@ -64,9 +65,10 @@ KEEP_TEMP="false"
 
 function usage {
     cat << EOF
-${SCRIPT_NAME} [-h|--help] [-k|--keep] [-v|--version]
+${SCRIPT_NAME} [-h|--help] [-k|--keep] [-p|--pgn] [-v|--version]
   -h : Display this wonderful help screen.
   -k : Keep temporary output instead of deleting it.
+  -p : PGN file to sort.
   -v : Display the version.
 EOF
     exit $1
@@ -76,7 +78,7 @@ EOF
 # Parse the command line options #
 ##################################
 
-ARGS=$(getopt -a -o hkv --long help,keep,version -- "$@")
+ARGS=$(getopt -a -o hkp:v --long help,keep,pgn:,version -- "$@")
 
 if [[ $? -gt 0 ]]
 then
@@ -89,6 +91,7 @@ do
     case $1 in
         -h | --help) usage 0 ; shift ;;
 	-k | --keep) KEEP_TEMP="true" ; shift ;;
+	-p | --pgn) PGN="$2" ; shift 2 ;;
 	-v | --version) script_info ; exit 0 ;;
 	--) shift ; break ;;
         *) usage 1 ;;
@@ -127,11 +130,27 @@ exec 2>$PIPE
 # Do something useful #
 #######################
 
+## Make sure the input (PGN) is readable.
+if [ ! -r "$PGN" ]
+then
+    echo "--> PGN must exist and be readable!"
+    exit 1
+fi
+
+PGN_DIR=$(dirname "$PGN")
+PGN_BASE=$(basename "$PGN")
+pushd "$PGN_DIR" 2>&1 >/dev/null
+PGN="$(pwd)/$PGN_BASE"
+popd 2>&1 >/dev/null
+
+## Use the $TEMP directory for the rest...
+pushd "$TEMP" 2>&1 >/dev/null
+
 ## Remove spaces for csplit.
-cat studies.pgn | sed '/^[[:space:]]*$/d' > condensed.pgn
+cat "$PGN" | sed '/^[[:space:]]*$/d' > condensed.pgn
 
 ## Split into multiple files.
-csplit -z condensed.pgn '/Event /' '{*}'
+csplit -z $TEMP/condensed.pgn '/Event /' '{*}' >/dev/null
 rm -f condensed.pgn
 
 ## Rename based on chapter and study.
@@ -147,18 +166,18 @@ do
 done
 
 ## Update studies.pgn...
-rm -f studies.pgn
+rm -f "$PGN"
 for f in $(ls s_*)
 do
-    cat $f >> studies.pgn
-    echo >> studies.pgn
+    cat $f >> "$PGN"
+    echo >> "$PGN"
 done
 
-## Remove blank lines at the end...
-sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' studies.pgn
+## Back to the original directory.
+popd 2>&1 >/dev/null
 
-## Cleanup...
-rm -f s_*
+## Remove blank lines at the end...
+sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$PGN"
 
 #############################
 # Restore stdout and stderr #
