@@ -28,12 +28,16 @@ def script_info():
 def main(argv):
     # parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--loglevel', help="logger level",
+    parser.add_argument('--loglevel',
+                        help="logger level",
                         choices=['DEBUG', 'INFO', 'WARNING',
                                  'ERROR', 'CRITICAL'], type=str.upper)
-    parser.add_argument("--logfile", help="file for logger output")
-    parser.add_argument('-v', '--version', help="display the version", action="store_true")
-    parser.add_argument('-p', '--pgn', help="The PGN file to clean up.")
+    parser.add_argument("--logfile",
+                        help="file for logger output")
+    parser.add_argument('-v', '--version',
+                        help="display the version", action="store_true")
+    parser.add_argument('-p', '--pgn',
+                        help="The PGN file to clean up.")
     args = parser.parse_args()
 
     # set up the logger
@@ -51,26 +55,31 @@ def main(argv):
     if args.version:
         script_info()
 
-    pgn = open(args.pgn)
+    # read the file and find all the braces
+    pgn = open(args.pgn, "r+")
     pgn_content = pgn.read()
     braces = \
         [p for p, c in enumerate(pgn_content) if c == '{' or c == '}']
     out = ""
     index = 0
 
+    # iterate through the braces
+    # clean up the contents between each set
     it = iter(braces)
     for s in it:
         e = next(it)
+        # now s is the index of the opening brace and e the index of the closing
         out += pgn_content[index:s]
         index = e
         old = pgn_content[(s + 1):e]
         old = old.strip()
         new = "{" + " ".join(old.split())
-        #print("--> {" + new + "}")
         out += new
 
     out += pgn_content[index:-1]
-    print(out)
+    #print(out)
+    pgn.seek(0)
+    pgn.write(out)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
