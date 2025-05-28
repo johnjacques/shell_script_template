@@ -195,14 +195,14 @@ declare -a OPTIONS_LINUX_5_15=( \
     "john.jacques@intel.com" \
 )
 
-declare -a OPTIONS_SUPPORT_GRR=( \
-    "BSP Suppport for GRR" \
+declare -a OPTIONS_SUPPORT_AXXIA=( \
+    "BSP Suppport for Axxia" \
     "/v/share/protex/SUPPORT/support" \
-    "grr/main" \
-    "/v/share/protex/SUPPORT/tip_grr" \
+    "axxia/main" \
+    "/v/share/protex/SUPPORT/tip_axxia" \
     "${DEFAULT_SERVER}" \
-    "c_supportgrr_25073" \
-    "john.jacques@intel.com,john.logan@intel.com" \
+    "c_axxiasupport_17486" \
+    "john.jacques@intel.com" \
 )
 
 declare -a OPTIONS_SUPPORT_SNR=( \
@@ -215,14 +215,24 @@ declare -a OPTIONS_SUPPORT_SNR=( \
     "john.jacques@intel.com,john.logan@intel.com" \
 )
 
-declare -a OPTIONS_SUPPORT_AXXIA=( \
-    "BSP Suppport for Axxia" \
+declare -a OPTIONS_SUPPORT_GRR=( \
+    "BSP Suppport for GRR" \
     "/v/share/protex/SUPPORT/support" \
-    "axxia/main" \
-    "/v/share/protex/SUPPORT/tip_axxia" \
+    "grr/main" \
+    "/v/share/protex/SUPPORT/tip_grr" \
     "${DEFAULT_SERVER}" \
-    "c_axxiasupport_17486" \
-    "john.jacques@intel.com" \
+    "c_supportgrr_25073" \
+    "john.jacques@intel.com,john.logan@intel.com" \
+)
+
+declare -a OPTIONS_SUPPORT_PMR=( \
+    "BSP Suppport for PMR" \
+    "/v/share/protex/SUPPORT/support" \
+    "pmr/main" \
+    "/v/share/protex/SUPPORT/tip_pmr" \
+    "${DEFAULT_SERVER}" \
+    "c_supportpmr_26519" \
+    "john.jacques@intel.com,douglas.t.paulson@intel.com" \
 )
 
 declare -a OPTIONS_META_AXXIA_THUD=( \
@@ -283,6 +293,16 @@ declare -a OPTIONS_META_INTEL_AXXIA_HARDKNOTT=( \
     "${DEFAULT_SERVER}" \
     "c_meta-intel-axxiahardknott_23401" \
     "john.jacques@intel.com" \
+)
+
+declare -a OPTIONS_META_INTEL_AXXIA_SCARTHGAP=( \
+    "Axxia BSP meta-intel-axxia, Scarthgap" \
+    "/v/share/protex/META-INTEL-AXXIA/meta-intel-axxia" \
+    "next/scarthgap" \
+    "/v/share/protex/META-INTEL-AXXIA/tip_scarthgap" \
+    "${DEFAULT_SERVER}" \
+    "c_meta-intel-axxiascarthgap_26518" \
+    "john.jacques@intel.com,douglas.t.paulson@intel.com" \
 )
 
 ################################################################################
@@ -375,6 +395,9 @@ while getopts "ht:c:b:o:s:p:x:X" option ; do
 		"support_grr")
 		    OPTIONS=("${OPTIONS_SUPPORT_GRR[@]}")
 		    ;;
+		"support_pmr")
+		    OPTIONS=("${OPTIONS_SUPPORT_PMR[@]}")
+		    ;;
 		"meta-axxia_thud")
 		    OPTIONS=("${OPTIONS_META_AXXIA_THUD[@]}")
 		    ;;
@@ -392,6 +415,9 @@ while getopts "ht:c:b:o:s:p:x:X" option ; do
 		    ;;
 		"meta-intel-axxia_hardknott")
 		    OPTIONS=("${OPTIONS_META_INTEL_AXXIA_HARDKNOTT[@]}")
+		    ;;
+		"meta-intel-axxia_scarthgap")
+		    OPTIONS=("${OPTIONS_META_INTEL_AXXIA_SCARTHGAP[@]}")
 		    ;;
 		*)
 		    echo "INVALID PRESET"
@@ -411,12 +437,14 @@ while getopts "ht:c:b:o:s:p:x:X" option ; do
 	    echo "support_axxia : scan the latest on axxia/main."
 	    echo "support_snr : scan the latest on snr/main."
 	    echo "support_grr : scan the latest on grr/main."
+	    echo "support_pmr : scan the latest on pmr/main."
 	    echo "meta-axxia_thud : scan the latest on next/thud."
 	    echo "meta-axxia_hardknott : scan the latest on next/hardknott."
 	    echo "meta-axxia_kirkstone : scan the latest on next/kirkstone."
 	    echo "meta-intel-axxia_thud : scan the latest on next/thud."
 	    echo "meta-intel-axxia_dunfell : scan the latest on dunfell."
 	    echo "meta-intel-axxia_hardknott : scan the latest on hardknott."
+	    echo "meta-intel-axxia_scarthgap : scan the latest on scarthgap."
 	    exit 0
 	    ;;
         *)
