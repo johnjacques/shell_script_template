@@ -9,12 +9,12 @@ TAG = $(shell git describe --tags --always --dirty)
 %.sh: %.sh.in
 	sed -e "s/__VERSION__/\"${TAG}\"/" $^ >$@
 	chmod 755 $@
-	$(shell ln -s $@ $(basename $@))
+	$(shell ln -fs $@ $(basename $@))
 
 %.py: %.py.in
 	sed -e "s/__VERSION__/\"${TAG}\"/" $^ >$@
 	chmod 755 $@
-	$(shell ln -s $@ $(basename $@))
+	$(shell ln -fs $@ $(basename $@))
 
 %.sh.d: %.sh.in
 	@echo "$(shell echo $@ | sed -e 's/.d//') : $^" >$@
