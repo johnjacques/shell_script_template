@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+######################################################################
+#
+# yocto_env
+#
+# Create a simple environment that works for Linux driver and
+# application samples.  Fro exaample, Yocto environments have
+# SDKTARGETSYSROOT instead of SYSROOT.
+#
+######################################################################
+
+# Export everything
+set -a
+
+# Version
+VERSION=__VERSION__
+
+# Name
+SCRIPT_NAME=$(basename "${0}")
+
+# Script directory
+SCRIPT_DIR=`dirname $0`
+pushd ${SCRIPT_DIR} >/dev/null 2>&1
+SCRIPT_DIR=$(pwd)
+popd >/dev/null 2>&1
+
+#############
+# Functions #
+#############
+
+function getdv {
+    if [ -f /etc/os-release ]; then
+	# freedesktop.org and systemd
+	. /etc/os-release
+	DISTRO=$NAME
+	VER=$VERSION_ID
+    elif type lsb_release >/dev/null 2>&1; then
+	# linuxbase.org
+	DISTRO=$(lsb_release -si)
+	VER=$(lsb_release -sr)
+    else
+	# Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
+	DISTRO=$(uname -s)
+	VER=$(uname -r)
+    fi
+
+    echo "$DISTRO:$VER"
+}
+
+function script_info {
+    echo "--> ${SCRIPT_NAME} version is ${VERSION}"
+    echo "--> running on $(getdv)"
+}
+
+############
+# Defaults #
+############
+
+INPUT=""
+KEEP_TEMP="false"
+OUTPUT=""
+
+######################################################################
+# usage_
+#
+# Display usage and exit with the given code.
+
+function usage {
+    cat << EOF
+${SCRIPT_NAME} [-h|--help] [-i|--input] [-k|--keep] [-o|--output] [-v|--version]
+  -h : Display this wonderful help screen.
+  -i : The input, a Yocto SDK environment.
+  -k : Keep temporary output instead of deleting it.
+  -o : The output you want to create.
+  -v : Display the version.
+EOF
+    exit $1
+}
+
+##################################
+# Parse the command line options #
+##################################
+
+ARGS=$(getopt -a -o hi:ko:v --long help,input:keep,output:version -- "$@")
+
+if [[ $? -gt 0 ]]
+then
+    usage 1
+fi
+
+eval set -- ${ARGS}
+while :
+do
+    case $1 in
+        -h | --help) usage 0 ; shift ;;
+	-i | --input) INPUT=$2 ; shift 2 ;;
+	-k | --keep) KEEP_TEMP="true" ; shift ;;
+	-o | --output) OUTPUT=$2 ; shift 2 ;;
+	-v | --version) script_info ; exit 0 ;;
+	--) shift ; break ;;
+        *) usage 1 ;;
+    esac
+done
+
+# $@ has all the options after --
+
+##########################################
+# Capture stdout and stdin in a log file #
+##########################################
+
+exec 3<&1
+exec 4<&2
+
+# Create a log file and redirect. 
+TEMP=$(mktemp -d /tmp/${SCRIPT_NAME}.XXXXXXXXXXXX)
+LOG=$TEMP/log
+PIPE=$TEMP/pipe
+
+if [ "$KEEP_TEMP" = "true" ]
+then
+    echo "--> Saving temporary files in ${TEMP}"
+else
+    trap "rm -rf $TEMP" EXIT
+fi
+
+mknod $PIPE p
+tee <$PIPE $LOG &
+exec 1>&-
+exec 1>$PIPE
+exec 2>&-
+exec 2>$PIPE
+
+#######################
+# Do something useful #
+#######################
+
+if [ ! -r "${INPUT}" ]
+then
+    echo "${INPUT} is not readable!"
+    exit 1
+fi
+
+if [ -f "${OUTPUT}" ]
+then
+    echo "${OUTPUT} already exists!"
+    exit 1
+fi
+
+AENV_ARCH=$(cat $INPUT | grep 'export ARCH' | cut -d'=' -f2)
+echo "export ARCH=$AENV_ARCH" > $OUTPUT
+AENV_CROSS_COMPILE=$(cat $INPUT | grep 'export CROSS_COMPILE' | cut -d'=' -f2)
+echo "export CROSS_COMPILE=$AENV_CROSS_COMPILE" >> $OUTPUT
+AENV_SYSROOT=$(cat $INPUT | grep 'export SDKTARGETSYSROOT' | cut -d'=' -f2)
+echo "export SYSROOT=$AENV_SYSROOT" >> $OUTPUT
+AENV_PATH=$(cat $INPUT | grep 'export OECORE_NATIVE_SYSROOT' | cut -d '=' -f 2 | cut -d "\"" -f2)
+AENV_PATH=$AENV_PATH/usr/bin/$(echo $AENV_CROSS_COMPILE | rev | cut -c2- | rev)
+echo "export PATH=$AENV_PATH:\$PATH" >> $OUTPUT
+AENV_KDIR=${AENV_SYSROOT}/usr/src/kernel
+echo "export KDIR=$AENV_KDIR" >> $OUTPUT
+echo "export KSRC=$AENV_KDIR" >> $OUTPUT
+echo "export KERNELDIR=$AENV_KDIR" >> $OUTPUT
+
+#############################
+# Restore stdout and stderr #
+#############################
+
+rm -f $PIPE
+exec 1<&3 3<&-
+exec 2<&4 4<&-
+
+##############
+# That's all #
+##############
+
+exit 0

@@ -10,6 +10,7 @@ protex
 python_template
 shell_template
 yocto_build
+yocto_env
 yocto_install
 zfind
 zload
