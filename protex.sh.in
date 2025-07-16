@@ -235,6 +235,16 @@ declare -a OPTIONS_SUPPORT_PMR=( \
     "john.jacques@intel.com,douglas.t.paulson@intel.com" \
 )
 
+declare -a OPTIONS_I3CTOOLS_PMR=( \
+    "I3C Tools for PMR" \
+    "/v/share/protex/I3CTOOLS/i3c-tools" \
+    "pmr" \
+    "/v/share/protex/I3CTOOLS/tip_pmr" \
+    "${DEFAULT_SERVER}" \
+    "c_i3c-toolspmr_26551" \
+    "john.jacques@intel.com,douglas.t.paulson@intel.com" \
+)
+
 declare -a OPTIONS_META_AXXIA_THUD=( \
     "Axxia BSP meta-axxia, Thud" \
     "/v/share/protex/META-AXXIA/meta-axxia" \
@@ -398,6 +408,9 @@ while getopts "ht:c:b:o:s:p:x:X" option ; do
 		"support_pmr")
 		    OPTIONS=("${OPTIONS_SUPPORT_PMR[@]}")
 		    ;;
+		"i3ctools_pmr")
+		    OPTIONS=("${OPTIONS_I3CTOOLS_PMR[@]}")
+		    ;;
 		"meta-axxia_thud")
 		    OPTIONS=("${OPTIONS_META_AXXIA_THUD[@]}")
 		    ;;
@@ -438,6 +451,7 @@ while getopts "ht:c:b:o:s:p:x:X" option ; do
 	    echo "support_snr : scan the latest on snr/main."
 	    echo "support_grr : scan the latest on grr/main."
 	    echo "support_pmr : scan the latest on pmr/main."
+	    echo "i3ctools_pmr : scan the latest on pmr."
 	    echo "meta-axxia_thud : scan the latest on next/thud."
 	    echo "meta-axxia_hardknott : scan the latest on next/hardknott."
 	    echo "meta-axxia_kirkstone : scan the latest on next/kirkstone."
