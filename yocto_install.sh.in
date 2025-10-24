@@ -71,6 +71,16 @@ function sdk {
     echo "--> SDK copied and intalled!"
 }
 
+function sdk_setup {
+    TOOLS="${1}"
+    pushd "${TOOLS}" >/dev/null 2>&1
+    yocto_env -i environment*64* -o austin.env
+    . environment*64*
+    ./external-modules-setup.sh
+    popd >/dev/null 2>&1
+    echo "--> SDK copied and intalled!"
+}
+
 function images {
     FROM="${1}"
     TO="${2}"
@@ -104,6 +114,7 @@ INSTALL=""
 KEEP_TEMP="false"
 LINUX=""
 QSP="false"
+SERVER="txandevvm01u"
 TAG=""
 
 ######################################################################
@@ -113,12 +124,13 @@ TAG=""
 
 function usage {
     cat << EOF
-${SCRIPT_NAME} [-c|--config <file>] [-h|--help] [-i|--install <directory>] [-k|--keep] [-v|--version]
+${SCRIPT_NAME} [-c|--config <file>] [-h|--help] [-i|--install <directory>] [-k|--keep] [-q|--qsp] [-s|--server <hostname or IP>] [-v|--version]
   -c : The Yocto conf/local.conf file.
   -h : Display this wonderful help screen.
   -i : Install directory.
   -k : Keep temporary output instead of deleting it.
   -q : QSP install -- there is no SDK and hddimg instead of wic for the craff.
+  -s : Server to run external-modules-setup.sh on [default is $SERVER].
   -v : Display the version.
 EOF
     exit $1
@@ -128,7 +140,7 @@ EOF
 # Parse the command line options #
 ##################################
 
-ARGS=$(getopt -a -o c:hi:kqv --long config:,help,install:,keep,qsp,version -- "$@")
+ARGS=$(getopt -a -o c:hi:kqs:v --long config:,help,install:,keep,qsp,server:,version -- "$@")
 
 if [[ $? -gt 0 ]]
 then
@@ -144,6 +156,7 @@ do
         -i | --install) INSTALL=$2 ; shift 2 ;;
 	-k | --keep) KEEP_TEMP="true" ; shift ;;
 	-q | --qsp) QSP="true" ; shift ;;
+	-s | --server) SERVER=$2 ; shift 2 ;;
 	-v | --version) script_info ; exit 0 ;;
 	--) shift ; break ;;
         *) usage 1 ;;
@@ -251,6 +264,17 @@ then
 	job=${jobs[$index]}
 	wait $job
     done
+
+    echo "--> Setting up the SDK using $SERVER"
+    ssh -o PasswordAuthentication=no $SERVER /bin/true >/dev/null 2>&1
+
+    if [ $? -ne 0 ]
+    then
+	echo "Passwordless ssh is NOT enabled for root on $SERVER!"
+	exit 1
+    fi
+
+    ssh "${SERVER}" "$(declare -f sdk_setup) ; sdk_setup "${INSTALL}/tools""
 else
     echo "--> Installing the images..."
     images "${IMAGES}" "${INSTALL}/images" "${QSP}"
