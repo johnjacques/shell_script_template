@@ -29,7 +29,9 @@ deps = $(SHELL_IN:.sh.in=.sh.d) $(PYTHON_IN:.py.in=.py.d)
 
 all: $(TARGETS)
 
+LINKS = $(shell find . -type l)
+
 clean:
-	rm -f *~ $(TARGETS) *.d
+	rm -f *~ $(TARGETS) *.d $(LINKS)
 
 -include $(deps)
