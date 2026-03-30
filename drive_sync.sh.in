@@ -5,7 +5,7 @@
 #
 # Sync local contents to Google Drive.
 #
-# Upload what's on, locally (/home/john/shared/Chess), to Chess in my
+# Upload what's on, locally (/home/john/Chess), to Chess in my
 # Google Drive.  The Learning folder get updated.
 #
 ######################################################################
@@ -129,7 +129,7 @@ exec 2>$PIPE
 # Do something useful #
 #######################
 
-pushd /home/john/shared/Chess/Learning >/dev/null 2>&1
+pushd /home/john/Chess/Learning >/dev/null 2>&1
 
 ## Make sure any libreoffice documents are available as PDF.
 find . -type f -iname "*.odt" | while read in
@@ -140,12 +140,12 @@ do
 done
 
 ## Use rsync to update ~/Cloud/Drive/Chess.
-rsync -avh --delete --exclude OLD/ ./ /home/john/Cloud/Drive/Chess/
+rsync -avh --delete --exclude OLD/ ./ /home/john/Cloud/Google/Drive/Chess/
 
 popd >/dev/null 2>&1
 
 ## Use rclone to update Chess in Google Drive.
-rclone sync /home/john/Cloud/Drive/Chess Drive:/Chess
+rclone sync /home/john/Cloud/Google/Drive/Chess Drive:/Chess
 
 #############################
 # Restore stdout and stderr #
@@ -160,3 +160,5 @@ exec 2<&4 4<&-
 ##############
 
 exit 0
+
+# -*- mode: sh -*-
