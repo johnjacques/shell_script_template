@@ -140,7 +140,8 @@ do
 done
 
 ## Use rsync to update ~/Cloud/Drive/Chess.
-rsync -avh --delete --exclude OLD/ ./ /home/john/Cloud/Google/Drive/Chess/
+rsync -avh --info=progress2 --delete \
+      --exclude OLD/ ./ /home/john/Cloud/Google/Drive/Chess/
 
 popd >/dev/null 2>&1
 
