@@ -80,6 +80,7 @@ def main(argv):
     #print(out)
     pgn.seek(0)
     pgn.write(out)
+    pgn.truncate()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
