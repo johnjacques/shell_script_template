@@ -24,3 +24,26 @@ The example shell script -- does nothing...
 ##################
 
 The example python script -- does nothing...
+
+## about python and Ubuntu 24.04 ##
+###################################
+
+pip is broken, and pipx is not the solution!  Instead, get pip working
+as described in
+https://ubuntuhandbook.org/index.php/2024/03/pip-install-error-ubuntu-2404.
+Basically the following.
+
+    pip install --user imagesearch --break-system-packages
+    mkdir -p ~/.config/pip
+    echo -e "[global]\nbreak-system-packages=true" > ~/.config/pip/pip.conf
+    cat ~/.config/pip/pip.conf
+
+~/.config/pip/pip.conf should have something like the following.
+
+    [global]
+    break-system-packages=true
+
+## eval_training.py ##
+######################
+
+Use pip to install chess, opencv-python (cv2), and cairosvg.
