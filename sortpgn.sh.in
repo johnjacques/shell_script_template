@@ -6,6 +6,9 @@
 # Sort games in a PGN file -- assuming it's from my GothemChess study
 # output ([White <the chapter>] and [Black <the study>])!!!
 #
+# Note that after combining studies, [Event <the event>] will be used
+# as well.
+#
 ######################################################################
 
 # Export everything
@@ -158,11 +161,14 @@ chapter_pattern="Chapter ([0-9]+)"
 study_pattern="Study ([0-9])"
 for f in $(ls xx*)
 do
+    event=$(echo "$(cat $f | grep '^\[Event ')" | sed 's/.*"\(.*\)".*/\1/' | tr -d ' ')
+    echo "--> $event"
     chapter_pattern="Chapter ([0-9]+)"
     chapter=$(if [[ $(cat $f | grep '^\[White ') =~ $chapter_pattern ]] ; then echo ${BASH_REMATCH[1]} ; fi)
     study_pattern="Study ([0-9])"
     study=$(if [[ $(cat $f | grep '^\[Black ') =~ $study_pattern ]] ; then echo ${BASH_REMATCH[1]} ; fi)
-    mv $f s_${chapter}_${study}
+    echo "--> $f : ${chapter} : ${study}"
+    mv $f s_${event}_${chapter}_${study}
 done
 
 ## Update studies.pgn...
