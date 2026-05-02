@@ -79,7 +79,7 @@ def main(argv):
     stdout, stderr = p.communicate()
     strout = "".join(map(chr, stdout))
     displays = []
-    regex = re.compile('\Wconnected.*\W([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)')
+    regex = re.compile(r'\Wconnected.*\W([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)')
     for line in strout.splitlines():
         result = regex.search(line)
         if result:
@@ -90,7 +90,7 @@ def main(argv):
     p = Popen(cmd, stdout=PIPE, stdin=PIPE)
     stdout, stderr = p.communicate()
     strout = "".join(map(chr, stdout))
-    regex = re.compile('_NET_ACTIVE_WINDOW\(WINDOW\).*\W(0x[0-9a-f]*)$')
+    regex = re.compile(r'_NET_ACTIVE_WINDOW\(WINDOW\).*\W(0x[0-9a-f]*)$')
     for line in strout.splitlines():
         result = regex.search(line)
         if result:
@@ -102,7 +102,7 @@ def main(argv):
     p = Popen(cmd, stdout=PIPE, stdin=PIPE)
     stdout, stderr = p.communicate()
     strout = "".join(map(chr, stdout))
-    regex = re.compile('Absolute upper-left ([XY]):\W+([0-9]+)')
+    regex = re.compile(r'Absolute upper-left ([XY]):\W+([0-9]+)')
     for line in strout.splitlines():
         result = regex.search(line)
         if result:
@@ -160,12 +160,12 @@ def main(argv):
     strout = "".join(map(chr, stdout))
 
     # In some cases, currently in check for example, no evaluation is available.
-    re_incheck = re.compile('^Final evaluation: none \(in check\)$')
+    re_incheck = re.compile(r'^Final evaluation: none \(in check\)$')
 
-    re_ver = re.compile('^Stockfish\W([0-9\.]+)\Wby the Stockfish developers')
-    re_bkt = re.compile("^.*?([0-9\.]+).*?([0-9\.]+).*?([0-9\.]+).*?"
-                        "([0-9\.]+).*?used$")
-    re_final = re.compile('^Final\Wevaluation.*?([\+\-0-9\.]+).*')
+    re_ver = re.compile(r'^Stockfish\W([0-9\.]+)\Wby the Stockfish developers')
+    re_bkt = re.compile(r"^.*?([0-9\.]+).*?([0-9\.]+).*?([0-9\.]+).*?"
+                        r"([0-9\.]+).*?used$")
+    re_final = re.compile(r'^Final\Wevaluation.*?([\+\-0-9\.]+).*')
 
     evaluation_available = True
 
