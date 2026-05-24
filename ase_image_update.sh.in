@@ -137,9 +137,17 @@ cp $ASE_INSTALL/images/pmr_bios.bin . && \
     cp $ASE_INSTALL/images/pmr_bios2.bin . && \
     cp $ASE_INSTALL/images/bl1.bin . && \
     cp $ASE_INSTALL/images/nvm.bin . && \
-    cp $ASE_INSTALL/images/hifmc.elf . && \
-    cp $ASE_INSTALL/images/hifmc_rom.bin . && \
+    cp $ASE_INSTALL/images/hifmc_rom.bin .
+
+if [[ -f $ASE_INSTALL/images/hifmc.elf ]]
+then
+    cp $ASE_INSTALL/images/hifmc.elf .
+fi
+
+if [[ -f $ASE_INSTALL/images/hifmc_rom.elf ]]
+then
     cp $ASE_INSTALL/images/hifmc_rom.elf .
+fi
 
 if [[ $? -ne 0 ]]
 then
