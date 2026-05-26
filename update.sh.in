@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 ######################################################################
 #
-# script.sh
+# update.sh
 #
-# Template for shell scripts...
+# Update the scripts in, by default, /tools/AGRreleases/yocto/pmr.
 #
 ######################################################################
 
@@ -54,7 +54,9 @@ function script_info {
 # Defaults #
 ############
 
+INSTALL="/tools/AGRreleases/yocto/pmr/scripts"
 KEEP_TEMP="false"
+QUIET="false"
 
 ######################################################################
 # usage_
@@ -63,9 +65,11 @@ KEEP_TEMP="false"
 
 function usage {
     cat << EOF
-${SCRIPT_NAME} [-h|--help] [-k|--keep] [-v|--version]
+${SCRIPT_NAME} [-h|--help] [-i|--install] [-k|--keep] [-q|--quiet] [-v|--version]
   -h : Display this wonderful help screen.
+  -i : Install location.
   -k : Keep temporary output instead of deleting it.
+  -q : Be quiet.
   -v : Display the version.
 EOF
     exit $1
@@ -75,7 +79,7 @@ EOF
 # Parse the command line options #
 ##################################
 
-ARGS=$(getopt -a -o hkv --long help,keep,version -- "$@")
+ARGS=$(getopt -a -o hikv --long help,install,keep,version -- "$@")
 
 if [[ $? -gt 0 ]]
 then
@@ -87,7 +91,9 @@ while :
 do
     case $1 in
         -h | --help) usage 0 ; shift ;;
+	-i | --install) INSTALL="$2" ; shift ;;
 	-k | --keep) KEEP_TEMP="true" ; shift ;;
+	-q | --quiet) QUIET="true" ; shift ;;
 	-v | --version) script_info ; exit 0 ;;
 	--) shift ; break ;;
         *) usage 1 ;;
@@ -125,6 +131,41 @@ exec 2>$PIPE
 #######################
 # Do something useful #
 #######################
+
+if [ "$QUIET" != "true" ]
+then
+    script_info
+fi
+
+# Make sure $INSTALL exists and is writeable.
+if [ ! -w "$INSTALL" ]
+then
+    echo "\"$INSTALL\" must exist and be writable!"
+    exit 1
+fi
+
+# Update 'austinify' from the lab server.
+# NOTE: The point of using the current version on the lab server is
+# that it should make the user experience less shocking -- it should
+# match the current experience.
+
+# Get the active server.
+ACTIVE=$(ssh aus-labsrv3 /export/scripts/active.sh)
+echo "--> Copying ausinify from $ACTIVE to $INSTALL"
+rm -rf "$INSTALL/austinify*"
+scp -q $ACTIVE:/export/scripts/austinify.sh "$INSTALL" ||
+    echo "--> Unable to copy austinify.sh! "
+scp -r $ACTIVE:/export/scripts/austinify "$INSTALL" ||
+    echo "--> Unable to copy austinify! "
+
+# Update image.sh from /workspace/sw/jjacques/projects/pmr/scripts
+echo "--> Copy image.sh from John's PMR script to $INSTALL"
+rm -f "$INSTALL/image.sh"
+cp /workspace/sw/jjacques/projects/pmr/scripts/image.sh "$INSTALL" ||
+    echo "--> Unable to copy image.sh! "
+
+# done...
+exit 0
 
 #############################
 # Restore stdout and stderr #
