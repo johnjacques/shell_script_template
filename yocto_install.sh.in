@@ -209,29 +209,27 @@ fi
 
 INSTALL_PARENT="$(dirname "${INSTALL}")"
 
-if [ -d "${INSTALL_PARENT}" ]
+if [ ! -d "${INSTALL_PARENT}" ]
 then
-    # Make sure the parent directory is part of the axxiaguest groups
-    # and has g+s!
-    GROUP="$(stat -c "%G" "${INSTALL_PARENT}")"
-
-    if [ "${GROUP}" != "axxiaguest" ]
-    then
-	echo "--> The parent directory MUST be part of the axxiaguest group!"
-	exit 1
-    fi
-
-    PERMS="$(stat -c "%a" "${INSTALL_PARENT}")"
-
-    if [ $PERMS -ne 2755 ]
-    then
-	echo "--> Permissions should be 'drwxr-sr-x'"
-	exit 1
-    fi
-else
     mkdir -p "${INSTALL_PARENT}"
-    chgrp axxiaguest "${INSTALL_PARENT}" || exit 1
-    chmod g+s "${INSTALL_PARENT}" || exit 1
+fi
+
+# Make sure the parent directory is part of the axxiaguest groups
+# and has g+s!
+GROUP="$(stat -c "%G" "${INSTALL_PARENT}")"
+
+if [ "${GROUP}" != "axxiaguest" ]
+then
+    echo "--> The parent directory MUST be part of the axxiaguest group!"
+    exit 1
+fi
+
+PERMS="$(stat -c "%a" "${INSTALL_PARENT}")"
+
+if [ $PERMS -ne 2755 ]
+then
+    echo "--> Permissions should be 'drwxr-sr-x'"
+    exit 1
 fi
 
 mkdir -p "${INSTALL}" || exit 1
